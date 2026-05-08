@@ -1,0 +1,46 @@
+{
+	"name": "AgentCore — MCP Research Agent",
+	"nodes": [
+		{
+			"parameters": {},
+			"id": "1",
+			"name": "Manual Trigger",
+			"type": "n8n-nodes-base.manualTrigger",
+			"typeVersion": 1,
+			"position": [240, 300]
+		},
+		{
+			"parameters": {
+				"operation": "run",
+				"agentName": "research_agent",
+				"modelId": "global.anthropic.claude-haiku-4-5-20251001-v1:0",
+				"systemPrompt": "You are a research assistant. Use the Exa search tool to find up-to-date information when answering questions. Cite your sources.",
+				"prompt": "Find 3 recent breakthroughs in quantum computing this year and summarize each in 2 sentences.",
+				"tools": {
+					"tool": [
+						{
+							"type": "remote_mcp",
+							"name": "exa",
+							"url": "https://mcp.exa.ai/mcp",
+							"headers": ""
+						}
+					]
+				},
+				"additionalOptions": {
+					"timeoutSeconds": 300
+				}
+			},
+			"id": "2",
+			"name": "Research Agent",
+			"type": "n8n-nodes-bedrock-agentcore.agentCoreHarness",
+			"typeVersion": 1,
+			"position": [480, 300],
+			"credentials": { "agentCoreApi": { "id": "1", "name": "AgentCore creds" } }
+		}
+	],
+	"connections": {
+		"Manual Trigger": {
+			"main": [[{ "node": "Research Agent", "type": "main", "index": 0 }]]
+		}
+	}
+}

@@ -1,0 +1,18 @@
+{
+	"node": "n8n-nodes-bedrock-agentcore.agentCoreHarness",
+	"nodeVersion": "1.0",
+	"codexVersion": "1.0",
+	"categories": ["AI", "AWS"],
+	"resources": {
+		"credentialDocumentation": [
+			{
+				"url": "https://github.com/aws/n8n-nodes-bedrock-agentcore#credentials"
+			}
+		],
+		"primaryDocumentation": [
+			{
+				"url": "https://github.com/aws/n8n-nodes-bedrock-agentcore"
+			}
+		]
+	}
+}

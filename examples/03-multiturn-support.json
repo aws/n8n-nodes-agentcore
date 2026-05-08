@@ -1,0 +1,56 @@
+{
+	"name": "AgentCore — Multi-turn Customer Support",
+	"nodes": [
+		{
+			"parameters": {
+				"httpMethod": "POST",
+				"path": "support",
+				"options": {}
+			},
+			"id": "1",
+			"name": "Webhook",
+			"type": "n8n-nodes-base.webhook",
+			"typeVersion": 2,
+			"position": [240, 300]
+		},
+		{
+			"parameters": {
+				"operation": "run",
+				"agentName": "support_agent",
+				"modelId": "global.anthropic.claude-haiku-4-5-20251001-v1:0",
+				"systemPrompt": "You are a friendly customer support agent. Help customers with their questions. Be concise.",
+				"prompt": "={{ $json.body.message }}",
+				"sessionId": "={{ $json.body.customerId + '-session-' + $json.body.threadId }}",
+				"tools": {},
+				"additionalOptions": {
+					"timeoutSeconds": 120,
+					"maxIterations": 20
+				}
+			},
+			"id": "2",
+			"name": "Support Agent",
+			"type": "n8n-nodes-bedrock-agentcore.agentCoreHarness",
+			"typeVersion": 1,
+			"position": [480, 300],
+			"credentials": { "agentCoreApi": { "id": "1", "name": "AgentCore creds" } }
+		},
+		{
+			"parameters": {
+				"options": {}
+			},
+			"id": "3",
+			"name": "Respond",
+			"type": "n8n-nodes-base.respondToWebhook",
+			"typeVersion": 1,
+			"position": [720, 300]
+		}
+	],
+	"connections": {
+		"Webhook": {
+			"main": [[{ "node": "Support Agent", "type": "main", "index": 0 }]]
+		},
+		"Support Agent": {
+			"main": [[{ "node": "Respond", "type": "main", "index": 0 }]]
+		}
+	}
+}

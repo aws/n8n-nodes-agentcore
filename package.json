@@ -1,0 +1,62 @@
+{
+  "name": "n8n-nodes-bedrock-agentcore",
+  "version": "0.1.2",
+  "description": "n8n community node for Amazon Bedrock AgentCore Harness. Run production-grade AI agents with isolated microVMs, real browsers, real code execution, and persistent memory — directly from your n8n workflows.",
+  "keywords": [
+    "n8n-community-node-package",
+    "n8n",
+    "aws",
+    "bedrock",
+    "agentcore",
+    "harness",
+    "ai",
+    "agent",
+    "llm"
+  ],
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/aws/n8n-nodes-bedrock-agentcore",
+  "author": {
+    "name": "Amazon Web Services"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/aws/n8n-nodes-bedrock-agentcore.git"
+  },
+  "scripts": {
+    "build": "tsc && gulp build:icons",
+    "dev": "tsc --watch",
+    "format": "prettier nodes credentials --write",
+    "lint": "eslint nodes credentials package.json",
+    "lintfix": "eslint nodes credentials package.json --fix",
+    "prepublishOnly": "npm run build && npm run lint"
+  },
+  "files": [
+    "dist"
+  ],
+  "n8n": {
+    "n8nNodesApiVersion": 1,
+    "credentials": [
+      "dist/credentials/AgentCoreApi.credentials.js"
+    ],
+    "nodes": [
+      "dist/nodes/AgentCoreHarness/AgentCoreHarness.node.js"
+    ]
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "eslint": "^8.57.0",
+    "eslint-plugin-n8n-nodes-base": "^1.16.0",
+    "gulp": "^5.0.0",
+    "n8n-workflow": "*",
+    "prettier": "^3.2.0",
+    "typescript": "^5.4.0"
+  },
+  "dependencies": {
+    "@aws-sdk/client-bedrock-agentcore": "^3.700.0",
+    "@aws-sdk/client-bedrock-agentcore-control": "^3.700.0"
+  },
+  "peerDependencies": {
+    "n8n-workflow": "*"
+  }
+}

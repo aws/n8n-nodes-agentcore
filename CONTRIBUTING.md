@@ -1,59 +1,115 @@
-# Contributing Guidelines
+# Contributing to n8n-nodes-bedrock-agentcore
 
-Thank you for your interest in contributing to our project. Whether it's a bug report, new feature, correction, or additional
-documentation, we greatly value feedback and contributions from our community.
+Thank you for your interest in contributing. This document describes the process
+for bug reports, feature requests, and code contributions.
 
-Please read through this document before submitting any issues or pull requests to ensure we have all the necessary
-information to effectively respond to your bug report or contribution.
+## Reporting bugs and requesting features
 
+Use [GitHub Issues](https://github.com/aws/n8n-nodes-bedrock-agentcore/issues).
+Before opening an issue, please search existing issues to avoid duplicates.
 
-## Reporting Bugs/Feature Requests
+A good bug report includes:
 
-We welcome you to use the GitHub issue tracker to report bugs or suggest features.
+- Node version (`n8n-nodes-bedrock-agentcore` version from `package.json`)
+- n8n version and how you are running it (community, self-hosted, Docker, etc.)
+- AWS region
+- The operation you were performing (Run Agent or Invoke Existing Harness)
+- Minimum reproducing workflow (export and attach if possible — **redact
+  credentials first**)
+- Expected vs. actual behavior
+- Full error message and any relevant logs
 
-When filing an issue, please check existing open, or recently closed, issues to make sure somebody else hasn't already
-reported the issue. Please try to include as much information as you can. Details like these are incredibly useful:
+For security issues, please see [SECURITY.md](./SECURITY.md) instead of opening
+a public issue.
 
-* A reproducible test case or series of steps
-* The version of our code being used
-* Any modifications you've made relevant to the bug
-* Anything unusual about your environment or deployment
+## Contributing code
 
+### Developer Certificate of Origin (DCO)
 
-## Contributing via Pull Requests
-Contributions via pull requests are much appreciated. Before sending us a pull request, please ensure that:
+By contributing, you certify that you wrote the code or have the right to
+contribute it under this project's license (Apache-2.0). All commits must
+include a sign-off line:
 
-1. You are working against the latest source on the *main* branch.
-2. You check existing open, and recently merged, pull requests to make sure someone else hasn't addressed the problem already.
-3. You open an issue to discuss any significant work - we would hate for your time to be wasted.
+```
+Signed-off-by: Your Name <your.email@example.com>
+```
 
-To send us a pull request, please:
+Use `git commit -s` to add this automatically. Pull requests without sign-offs
+will be asked to amend commits before merge.
 
-1. Fork the repository.
-2. Modify the source; please focus on the specific change you are contributing. If you also reformat all the code, it will be hard for us to focus on your change.
-3. Ensure local tests pass.
-4. Commit to your fork using clear commit messages.
-5. Send us a pull request, answering any default questions in the pull request interface.
-6. Pay attention to any automated CI failures reported in the pull request, and stay involved in the conversation.
+### Development setup
 
-GitHub provides additional document on [forking a repository](https://help.github.com/articles/fork-a-repo/) and
-[creating a pull request](https://help.github.com/articles/creating-a-pull-request/).
+Prerequisites:
 
+- Node.js 20 or later
+- npm 10 or later
+- An n8n instance for local testing (any supported version)
+- AWS credentials with AgentCore Harness access for end-to-end testing
 
-## Finding contributions to work on
-Looking at the existing issues is a great way to find something to contribute on. As our projects, by default, use the default GitHub issue labels (enhancement/bug/duplicate/help wanted/invalid/question/wontfix), looking at any 'help wanted' issues is a great place to start.
+Setup:
 
+```bash
+git clone https://github.com/aws/n8n-nodes-bedrock-agentcore.git
+cd n8n-nodes-bedrock-agentcore
+npm install
+npm run build
+```
+
+To test against a local n8n instance, see the "Local development" section of
+[README.md](./README.md).
+
+### Before submitting a pull request
+
+- [ ] `npm run lint` passes with zero errors
+- [ ] `npm run build` completes cleanly
+- [ ] New or changed behavior is covered by a manual test plan in the PR
+      description
+- [ ] Documentation is updated (README, inline JSDoc, or example workflows
+      as applicable)
+- [ ] If adding a dependency, explain why it is necessary and check that its
+      license is compatible with Apache-2.0
+
+### Pull request process
+
+1. Fork the repository and create a feature branch from `main`
+2. Make your changes with clear, descriptive commits
+3. Ensure all commits are signed off (`git commit -s`)
+4. Open a pull request with:
+   - A description of the problem and solution
+   - A manual test plan with reproduction steps
+   - Links to any related issues
+5. Address review feedback; we may ask for changes
+6. Once approved, a maintainer will merge
+
+We squash-merge by default, so commit history within a PR is not preserved —
+but your sign-off must still be present on at least one commit.
+
+### Style
+
+- TypeScript, strict mode enabled (see `tsconfig.json`)
+- Follow the existing code style enforced by ESLint and Prettier
+- Run `npm run lintfix` and `npm run format` before submitting
+
+### Scope of contributions
+
+Contributions welcome in all of these areas:
+
+- Bug fixes
+- Documentation improvements (README, JSDoc, example workflows)
+- New tool types as they become available in AgentCore Harness
+- Additional example workflows demonstrating useful patterns
+- Test coverage improvements
+
+Contributions that expand the scope significantly (new operations, breaking
+changes to the credential shape, restructured node architecture) should start
+as an issue for design discussion before code is written.
 
 ## Code of Conduct
-This project has adopted the [Amazon Open Source Code of Conduct](https://aws.github.io/code-of-conduct).
-For more information see the [Code of Conduct FAQ](https://aws.github.io/code-of-conduct-faq) or contact
-opensource-codeofconduct@amazon.com with any additional questions or comments.
 
+This project follows the [Amazon Open Source Code of Conduct](./CODE_OF_CONDUCT.md).
+By participating, you agree to uphold this code.
 
-## Security issue notifications
-If you discover a potential security issue in this project we ask that you notify AWS/Amazon Security via our [vulnerability reporting page](http://aws.amazon.com/security/vulnerability-reporting/). Please do **not** create a public github issue.
+## License
 
-
-## Licensing
-
-See the [LICENSE](LICENSE) file for our project's licensing. We will ask you to confirm the licensing of your contribution.
+By contributing, you agree that your contributions will be licensed under the
+project's [Apache-2.0 license](./LICENSE)

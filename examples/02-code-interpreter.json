@@ -1,0 +1,45 @@
+{
+	"name": "AgentCore — Code Interpreter Data Analysis",
+	"nodes": [
+		{
+			"parameters": {},
+			"id": "1",
+			"name": "Manual Trigger",
+			"type": "n8n-nodes-base.manualTrigger",
+			"typeVersion": 1,
+			"position": [240, 300]
+		},
+		{
+			"parameters": {
+				"operation": "run",
+				"agentName": "data_analyst",
+				"modelId": "global.anthropic.claude-sonnet-4-5-20250514-v1:0",
+				"systemPrompt": "You are a data analyst. When given data or computational tasks, write and execute Python code in the sandbox to produce results. Show your work.",
+				"prompt": "Generate 1000 random numbers between 0 and 100. Compute mean, median, standard deviation, and produce a histogram description (no actual image needed). Return all results as JSON.",
+				"tools": {
+					"tool": [
+						{
+							"type": "agentcore_code_interpreter",
+							"name": "code_interpreter"
+						}
+					]
+				},
+				"additionalOptions": {
+					"timeoutSeconds": 300,
+					"maxTokens": 4096
+				}
+			},
+			"id": "2",
+			"name": "Data Analyst",
+			"type": "n8n-nodes-bedrock-agentcore.agentCoreHarness",
+			"typeVersion": 1,
+			"position": [480, 300],
+			"credentials": { "agentCoreApi": { "id": "1", "name": "AgentCore creds" } }
+		}
+	],
+	"connections": {
+		"Manual Trigger": {
+			"main": [[{ "node": "Data Analyst", "type": "main", "index": 0 }]]
+		}
+	}
+}
