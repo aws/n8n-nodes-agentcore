@@ -1,16 +1,16 @@
-# Contributing to n8n-nodes-bedrock-agentcore
+# Contributing to n8n-nodes-agentcore
 
 Thank you for your interest in contributing. This document describes the process
 for bug reports, feature requests, and code contributions.
 
 ## Reporting bugs and requesting features
 
-Use [GitHub Issues](https://github.com/aws/n8n-nodes-bedrock-agentcore/issues).
+Use [GitHub Issues](https://github.com/aws/n8n-nodes-agentcore/issues).
 Before opening an issue, please search existing issues to avoid duplicates.
 
 A good bug report includes:
 
-- Node version (`n8n-nodes-bedrock-agentcore` version from `package.json`)
+- Node version (`n8n-nodes-agentcore` version from `package.json`)
 - n8n version and how you are running it (community, self-hosted, Docker, etc.)
 - AWS region
 - The operation you were performing (Run Agent or Invoke Existing Harness)
@@ -49,8 +49,8 @@ Prerequisites:
 Setup:
 
 ```bash
-git clone https://github.com/aws/n8n-nodes-bedrock-agentcore.git
-cd n8n-nodes-bedrock-agentcore
+git clone https://github.com/aws/n8n-nodes-agentcore.git
+cd n8n-nodes-agentcore
 npm install
 npm run build
 ```

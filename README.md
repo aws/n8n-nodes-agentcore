@@ -1,4 +1,4 @@
-# n8n-nodes-bedrock-agentcore
+# n8n-nodes-agentcore
 
 An n8n community node for **Amazon Bedrock AgentCore Harness**. Run production-grade AI agents with isolated microVMs, real browsers, real code execution, and persistent memory — directly from your n8n workflows.
 
@@ -35,14 +35,14 @@ n8n's native AI Agent node is great for simple agents, but hits walls fast: no c
 
 1. Open n8n
 2. **Settings → Community Nodes → Install a community node**
-3. Enter `n8n-nodes-bedrock-agentcore`
+3. Enter `n8n-nodes-agentcore`
 4. Accept the warning, click **Install**
 
 ### Manually
 
 ```bash
 cd ~/.n8n
-npm install n8n-nodes-bedrock-agentcore
+npm install n8n-nodes-agentcore
 # restart n8n
 ```
 
@@ -141,8 +141,8 @@ Import any of them via **Workflows → Import from File** in n8n.
 ### Step 1 — Clone and install
 
 ```bash
-git clone https://github.com/aws/n8n-nodes-bedrock-agentcore.git
-cd n8n-nodes-bedrock-agentcore
+git clone https://github.com/aws/n8n-nodes-agentcore.git
+cd n8n-nodes-agentcore
 npm install
 ```
 
@@ -164,7 +164,7 @@ npm link
 mkdir -p ~/.n8n/custom
 cd ~/.n8n/custom
 npm init -y           # if package.json doesn't already exist
-npm link n8n-nodes-bedrock-agentcore
+npm link n8n-nodes-agentcore
 ```
 
 ### Step 4 — Start n8n
@@ -220,7 +220,7 @@ npm login            # if not already logged in
 npm publish --access public
 ```
 
-The package name `n8n-nodes-bedrock-agentcore` matches n8n's required `n8n-nodes-*` convention, so n8n's community node scanner will discover it.
+The package name `n8n-nodes-agentcore` matches n8n's required `n8n-nodes-*` convention, so n8n's community node scanner will discover it.
 
 ### Step 4 — Submit to n8n community nodes registry
 
@@ -253,7 +253,7 @@ The package name `n8n-nodes-bedrock-agentcore` matches n8n's required `n8n-nodes
 
 ## Getting help and contributing
 
-- **Bug reports and feature requests:** [open an issue](https://github.com/aws/n8n-nodes-bedrock-agentcore/issues)
+- **Bug reports and feature requests:** [open an issue](https://github.com/aws/n8n-nodes-agentcore/issues)
 - **Security issues:** please do not open a public issue. See [SECURITY.md](./SECURITY.md) for the disclosure process.
 - **Contributing:** see [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines, development setup, and the Developer Certificate of Origin process.
 - **Code of Conduct:** this project adheres to the [Amazon Open Source Code of Conduct](./CODE_OF_CONDUCT.md).

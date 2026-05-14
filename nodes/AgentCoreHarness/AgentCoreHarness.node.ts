@@ -62,7 +62,7 @@ export class AgentCoreHarness implements INodeType {
 			alias: ['agent', 'bedrock', 'agentcore', 'aws', 'llm', 'claude', 'anthropic'],
 			resources: {
 				primaryDocumentation: [
-					{ url: 'https://github.com/aws/n8n-nodes-bedrock-agentcore' },
+					{ url: 'https://github.com/aws/n8n-nodes-agentcore' },
 				],
 			},
 		},
@@ -468,9 +468,9 @@ async function resolveExistingHarness(
 				...(nextToken ? { nextToken } : {}),
 			}),
 		);
-		const summaries = resp.harnessSummaries ?? [];
+		const summaries = resp.harnessSummaries ?? resp.harnesses ?? resp.items ?? [];
 		const match = summaries.find((h: any) => {
-			const name = h.harnessName ?? '';
+			const name = h.harnessName ?? h.name ?? h.harnessId ?? '';
 			return name === agentName || name.startsWith(agentName + '-');
 		});
 		if (match) {

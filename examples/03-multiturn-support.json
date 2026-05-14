@@ -29,7 +29,7 @@
 			},
 			"id": "2",
 			"name": "Support Agent",
-			"type": "n8n-nodes-bedrock-agentcore.agentCoreHarness",
+			"type": "n8n-nodes-agentcore.agentCoreHarness",
 			"typeVersion": 1,
 			"position": [480, 300],
 			"credentials": { "agentCoreApi": { "id": "1", "name": "AgentCore creds" } }

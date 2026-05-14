@@ -1,5 +1,5 @@
 {
-  "name": "n8n-nodes-bedrock-agentcore",
+  "name": "n8n-nodes-agentcore",
   "version": "0.1.2",
   "description": "n8n community node for Amazon Bedrock AgentCore Harness. Run production-grade AI agents with isolated microVMs, real browsers, real code execution, and persistent memory — directly from your n8n workflows.",
   "keywords": [
@@ -14,13 +14,13 @@
     "llm"
   ],
   "license": "Apache-2.0",
-  "homepage": "https://github.com/aws/n8n-nodes-bedrock-agentcore",
+  "homepage": "https://github.com/aws/n8n-nodes-agentcore",
   "author": {
     "name": "Amazon Web Services"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/aws/n8n-nodes-bedrock-agentcore.git"
+    "url": "https://github.com/aws/n8n-nodes-agentcore.git"
   },
   "scripts": {
     "build": "tsc && gulp build:icons",

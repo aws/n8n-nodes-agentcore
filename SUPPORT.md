@@ -5,10 +5,10 @@
 This project is community-maintained. For bug reports, feature requests, or
 usage questions:
 
-- **GitHub Issues:** <https://github.com/aws/n8n-nodes-bedrock-agentcore/issues>
+- **GitHub Issues:** <https://github.com/aws/n8n-nodes-agentcore/issues>
   (replace with the final repo URL before publish)
 - **n8n Community Forum:** <https://community.n8n.io/> — post in the
-  community-nodes category with the `n8n-nodes-bedrock-agentcore` tag
+  community-nodes category with the `n8n-nodes-agentcore` tag
 
 ## Support scope
 

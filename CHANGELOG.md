@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Initial release of `n8n-nodes-bedrock-agentcore`
+- Initial release of `n8n-nodes-agentcore`
 - `AgentCoreHarness` node with two operations:
   - **Run Agent**: auto-provisions an AgentCore Harness on first execution,
     reuses it across subsequent runs, and updates it when configuration changes.

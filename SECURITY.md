@@ -14,7 +14,7 @@ Include the following in your report:
 
 - A description of the vulnerability and its potential impact
 - Steps to reproduce, or a proof-of-concept
-- The version of `n8n-nodes-bedrock-agentcore` affected
+- The version of `n8n-nodes-agentcore` affected
 - Your n8n version and deployment environment (self-hosted, Docker, etc.)
 - Any known mitigations or workarounds
 
@@ -36,7 +36,7 @@ coordinate a secure channel.
 
 In scope:
 
-- Vulnerabilities in the `n8n-nodes-bedrock-agentcore` package code, its
+- Vulnerabilities in the `n8n-nodes-agentcore` package code, its
   credentials handler, or its interaction with the AWS SDK
 - Credential leakage, improper session handling, insecure defaults in the node
 - Supply chain concerns about the published npm artifact
