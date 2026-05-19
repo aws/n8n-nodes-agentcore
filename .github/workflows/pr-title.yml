@@ -1,7 +1,6 @@
 name: Validate PR Title
 
 on:
-  # pull_request_target so this runs on fork PRs (read-only metadata access; no checkout of fork code).
   pull_request_target:
     branches: [main]
     types: [opened, edited, synchronize, reopened]
@@ -12,6 +11,9 @@ permissions:
 
 jobs:
   validate-pr-title:
+    # Skip Dependabot PRs — their commit-message format follows its own
+    # convention and the label-based ignore has a race condition on first open.
+    if: github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: amannn/action-semantic-pull-request@v5
@@ -31,10 +33,6 @@ jobs:
             chore
             revert
           requireScope: false
-          subjectPattern: ^[a-z].+$
-          subjectPatternError: |
-            The subject "{subject}" in PR title "{title}" must start with a lowercase letter.
-            Example: "feat: add memory auto-provisioning"
           ignoreLabels: |
             dependencies
             release

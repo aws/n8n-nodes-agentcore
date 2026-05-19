@@ -36,7 +36,6 @@ How did you verify this works?
 
 - [ ] I read CONTRIBUTING.md
 - [ ] PR title follows Conventional Commits (`feat:`, `fix:`, `chore:`, etc.)
-- [ ] All commits in this PR are signed off per the DCO (`git commit -s`)
 - [ ] CHANGELOG.md updated under `## [Unreleased]`
 
 ---

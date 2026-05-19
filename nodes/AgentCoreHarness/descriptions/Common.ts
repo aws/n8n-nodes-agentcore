@@ -34,7 +34,7 @@ export const toolsField: INodeProperties = {
 					name: 'headers',
 					type: 'string',
 					default: '',
-					placeholder: '{\'Authorization\': \'Bearer	...\'}',
+					placeholder: "{'Authorization': 'Bearer	...'}",
 					description: 'Optional HTTP headers as a JSON object',
 				},
 				{
@@ -74,7 +74,7 @@ export const toolsField: INodeProperties = {
 							name: 'Remote MCP Server',
 							value: 'remote_mcp',
 						},
-					]
+					],
 				},
 			],
 		},
