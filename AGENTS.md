@@ -165,7 +165,6 @@ The `main` branch is protected. No merges without PR review by
 - Quality and Safety Checks (lint, typecheck, format, security, secrets, no-eval)
 - Build and Pack
 - Validate PR Title
-- DCO Sign-off Check
 - Dependency Review
 
 This applies equally to maintainers' own PRs.
@@ -182,14 +181,6 @@ Subjects must start with a lowercase letter. Example:
 
 The squash-merge default means the PR title becomes the commit message
 on `main`, which feeds the auto-generated release notes.
-
-## DCO sign-off
-
-Every commit in every PR must include a `Signed-off-by:` trailer per the
-Developer Certificate of Origin. Enforced by
-`.github/workflows/dco.yml`. Use:
-
-    git commit -s -m "feat: add memory auto-provisioning"
 
 ## Release process
 
