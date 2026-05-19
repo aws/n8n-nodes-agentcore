@@ -37,8 +37,7 @@ export const invokeExistingOperationFields: INodeProperties[] = [
 		type: 'string',
 		default: '',
 		displayOptions: { show: { operation: ['invokeExisting'] } },
-		description:
-			'Optional. Must be at least 33 characters. Auto-generated when blank.',
+		description: 'Optional. Must be at least 33 characters. Auto-generated when blank.',
 	},
 	{
 		displayName: 'Per-Invocation Overrides',
@@ -50,27 +49,6 @@ export const invokeExistingOperationFields: INodeProperties[] = [
 		description:
 			'Optional. Override harness configuration for this invocation only. Useful for trying different models or tools without redeploying.',
 		options: [
-			{
-				displayName: 'Model ID Override',
-				name: 'modelId',
-				type: 'string',
-				default: '',
-				description: 'Override the harness model for this invocation',
-			},
-			{
-				displayName: 'System Prompt Override',
-				name: 'systemPrompt',
-				type: 'string',
-				typeOptions: { rows: 3 },
-				default: '',
-				description: 'Override the harness system prompt for this invocation',
-			},
-			{
-				...toolsField,
-				displayName: 'Tools Override',
-				name: 'tools',
-				description: 'Override the harness tool list for this invocation',
-			},
 			{
 				displayName: 'Actor ID',
 				name: 'actorId',
@@ -91,10 +69,31 @@ export const invokeExistingOperationFields: INodeProperties[] = [
 				default: 4096,
 			},
 			{
+				displayName: 'Model ID Override',
+				name: 'modelId',
+				type: 'string',
+				default: '',
+				description: 'Override the harness model for this invocation',
+			},
+			{
+				displayName: 'System Prompt Override',
+				name: 'systemPrompt',
+				type: 'string',
+				typeOptions: { rows: 3 },
+				default: '',
+				description: 'Override the harness system prompt for this invocation',
+			},
+			{
 				displayName: 'Timeout (Seconds)',
 				name: 'timeoutSeconds',
 				type: 'number',
 				default: 600,
+			},
+			{
+				...toolsField,
+				displayName: 'Tools Override',
+				name: 'tools',
+				description: 'Override the harness tool list for this invocation',
 			},
 		],
 	},

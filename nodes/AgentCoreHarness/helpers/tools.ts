@@ -96,9 +96,7 @@ function parseHeaders(headersJson: string | undefined): Record<string, string> {
 		}
 		return parsed as Record<string, string>;
 	} catch (err) {
-		throw new Error(
-			'Headers must be valid JSON, for example: {"Authorization": "Bearer ..."}',
-		);
+		throw new Error('Headers must be valid JSON, for example: {"Authorization": "Bearer ..."}');
 	}
 }
 

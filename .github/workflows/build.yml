@@ -1,0 +1,78 @@
+name: Build and Pack
+
+on:
+  push:
+    branches: ['main']
+  pull_request:
+    branches: ['main']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        # n8n self-host runs on a range of Node versions in practice.
+        # 20.x is current LTS, 22.x is the next; cover both.
+        node-version: ['20.x', '22.x']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+
+      - run: npm ci
+
+      - run: npm run build
+
+      - name: Verify built artifacts exist
+        run: |
+          set -e
+          test -f dist/credentials/AgentCoreApi.credentials.js \
+            || (echo "Missing dist/credentials/AgentCoreApi.credentials.js" && exit 1)
+          test -f dist/nodes/AgentCoreHarness/AgentCoreHarness.node.js \
+            || (echo "Missing dist/nodes/AgentCoreHarness/AgentCoreHarness.node.js" && exit 1)
+          test -f dist/nodes/AgentCoreHarness/agentcore.svg \
+            || (echo "Missing dist/nodes/AgentCoreHarness/agentcore.svg (gulp icon copy failed?)" && exit 1)
+          echo "OK: All expected dist files present"
+
+      - name: Pack tarball
+        if: matrix.node-version == '20.x'
+        run: npm pack
+
+      - name: Validate package contents
+        if: matrix.node-version == '20.x'
+        run: |
+          set -e
+          TARBALL=$(ls n8n-nodes-agentcore-*.tgz | head -1)
+          echo "Inspecting $TARBALL"
+          tar -tzf "$TARBALL" | tee /tmp/contents.txt
+          # n8n manifest paths must be inside the tarball
+          grep -q 'package/dist/credentials/AgentCoreApi.credentials.js' /tmp/contents.txt
+          grep -q 'package/dist/nodes/AgentCoreHarness/AgentCoreHarness.node.js' /tmp/contents.txt
+          grep -q 'package/dist/nodes/AgentCoreHarness/agentcore.svg' /tmp/contents.txt
+          # And source must NOT be shipped
+          if grep -q 'package/nodes/.*\.ts$' /tmp/contents.txt; then
+            echo "TypeScript source is being shipped - package.json files[] is too broad."
+            exit 1
+          fi
+          echo "OK: Tarball contents look right"
+
+      - name: Upload tarball
+        if: matrix.node-version == '20.x'
+        uses: actions/upload-artifact@v4
+        with:
+          name: tarball
+          path: '*.tgz'
+          retention-days: 7

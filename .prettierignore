@@ -1,0 +1,7 @@
+node_modules/
+dist/
+coverage/
+package-lock.json
+*.md
+docs/iam-*.json
+examples/*.json

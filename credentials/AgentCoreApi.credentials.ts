@@ -9,7 +9,8 @@ export class AgentCoreApi implements ICredentialType {
 
 	displayName = 'AWS Bedrock AgentCore API';
 
-	documentationUrl = 'https://docs.aws.amazon.com/bedrock-agentcore/';
+	// eslint-disable-next-line n8n-nodes-base/cred-class-field-documentation-url-miscased
+	documentationUrl = 'https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/harness.html';
 
 	properties: INodeProperties[] = [
 		{

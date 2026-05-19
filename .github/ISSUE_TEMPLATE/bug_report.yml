@@ -1,0 +1,85 @@
+name: Bug Report
+description: Report a bug in n8n-nodes-agentcore
+labels: ['bug']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing: please check existing issues, and confirm this is a bug in the **node**, not in AgentCore itself (use AWS Support for service issues).
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What happened, and what did you expect?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: operation
+    attributes:
+      label: Operation
+      options:
+        - Run Agent
+        - Invoke Existing Harness
+        - Other / N/A
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Configure node with ...
+        2. Set credential to ...
+        3. Click Execute Workflow
+        4. Observe ...
+    validations:
+      required: true
+
+  - type: input
+    id: node-version
+    attributes:
+      label: n8n-nodes-agentcore version
+      description: from `npm ls n8n-nodes-agentcore` in your n8n install
+      placeholder: '0.1.0'
+    validations:
+      required: true
+
+  - type: input
+    id: n8n-version
+    attributes:
+      label: n8n version
+    validations:
+      required: true
+
+  - type: dropdown
+    id: region
+    attributes:
+      label: AWS Region
+      options:
+        - us-east-1
+        - us-west-2
+        - ap-southeast-2
+        - eu-central-1
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs / errors
+      description: Paste any error messages from the n8n execution log. **Redact ARNs, account IDs, and access keys.**
+      render: shell
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Confirmations
+      options:
+        - label: I have redacted any sensitive information (ARNs, account IDs, credentials)
+          required: true
+        - label: I have searched existing issues for duplicates
+          required: true

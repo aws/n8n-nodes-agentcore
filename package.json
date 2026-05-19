@@ -1,6 +1,6 @@
 {
   "name": "n8n-nodes-agentcore",
-  "version": "0.1.2",
+  "version": "0.1.0",
   "description": "n8n community node for Amazon Bedrock AgentCore Harness. Run production-grade AI agents with isolated microVMs, real browsers, real code execution, and persistent memory — directly from your n8n workflows.",
   "keywords": [
     "n8n-community-node-package",
@@ -22,13 +22,20 @@
     "type": "git",
     "url": "https://github.com/aws/n8n-nodes-agentcore.git"
   },
+  "bugs": {
+    "url": "https://github.com/aws/n8n-nodes-agentcore/issues"
+  },
   "scripts": {
     "build": "tsc && gulp build:icons",
     "dev": "tsc --watch",
+    "typecheck": "tsc --noEmit",
     "format": "prettier nodes credentials --write",
-    "lint": "eslint nodes credentials package.json",
-    "lintfix": "eslint nodes credentials package.json --fix",
-    "prepublishOnly": "npm run build && npm run lint"
+    "format:check": "prettier nodes credentials --check",
+    "lint": "eslint --ext .ts,.json nodes credentials package.json",
+    "lintfix": "eslint --ext .ts,.json nodes credentials package.json --fix",
+    "security:audit": "npm audit --audit-level=high --omit=dev",
+    "secrets:check": "secretlint \"**/*\" --secretlintignore .secretlintignore",
+    "prepublishOnly": "npm run build && npm run lint && npm run typecheck"
   },
   "files": [
     "dist"
@@ -43,6 +50,7 @@
     ]
   },
   "devDependencies": {
+    "@secretlint/secretlint-rule-preset-recommend": "^9.0.0",
     "@types/node": "^20.0.0",
     "@typescript-eslint/parser": "^7.0.0",
     "eslint": "^8.57.0",
@@ -50,6 +58,7 @@
     "gulp": "^5.0.0",
     "n8n-workflow": "*",
     "prettier": "^3.2.0",
+    "secretlint": "^9.0.0",
     "typescript": "^5.4.0"
   },
   "dependencies": {

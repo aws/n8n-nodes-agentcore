@@ -56,11 +56,7 @@ export async function waitForHarnessReady(
 		if (status === 'READY') {
 			return { status };
 		}
-		if (
-			status === 'CREATE_FAILED' ||
-			status === 'UPDATE_FAILED' ||
-			status === 'DELETE_FAILED'
-		) {
+		if (status === 'CREATE_FAILED' || status === 'UPDATE_FAILED' || status === 'DELETE_FAILED') {
 			return {
 				status,
 				failureReason: harness.failureReason ?? 'no failure reason provided',

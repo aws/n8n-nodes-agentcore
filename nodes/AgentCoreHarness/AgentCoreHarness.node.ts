@@ -3,13 +3,15 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 import {
-	NodeOperationError,
+	ApplicationError,
 	type IDataObject,
 	type IExecuteFunctions,
 	type INodeExecutionData,
 	type INodeType,
 	type INodeTypeDescription,
+	NodeOperationError,
 } from 'n8n-workflow';
+
 import { createHash, randomUUID } from 'crypto';
 
 import { runOperationFields } from './descriptions/RunOperation';
@@ -61,9 +63,7 @@ export class AgentCoreHarness implements INodeType {
 			},
 			alias: ['agent', 'bedrock', 'agentcore', 'aws', 'llm', 'claude', 'anthropic'],
 			resources: {
-				primaryDocumentation: [
-					{ url: 'https://github.com/aws/n8n-nodes-agentcore' },
-				],
+				primaryDocumentation: [{ url: 'https://github.com/aws/n8n-nodes-agentcore' }],
 			},
 		},
 		inputs: ['main'],
@@ -120,9 +120,8 @@ export class AgentCoreHarness implements INodeType {
 			GetHarnessCommand,
 			ListHarnessesCommand,
 		} = await import('@aws-sdk/client-bedrock-agentcore-control');
-		const { BedrockAgentCoreClient, InvokeHarnessCommand } = await import(
-			'@aws-sdk/client-bedrock-agentcore'
-		);
+		const { BedrockAgentCoreClient, InvokeHarnessCommand } =
+			await import('@aws-sdk/client-bedrock-agentcore');
 
 		const controlClient = new BedrockAgentCoreControlClient({
 			region,
@@ -145,13 +144,21 @@ export class AgentCoreHarness implements INodeType {
 				const operation = this.getNodeParameter('operation', itemIndex) as string;
 
 				if (operation === 'run') {
-					const result = await runAgent(this, itemIndex, creds, controlClient, dataClient, {
-						CreateHarnessCommand,
-						UpdateHarnessCommand,
-						InvokeHarnessCommand,
-						GetHarnessCommand,
-						ListHarnessesCommand,
-					}, staticData);
+					const result = await runAgent(
+						this,
+						itemIndex,
+						creds,
+						controlClient,
+						dataClient,
+						{
+							CreateHarnessCommand,
+							UpdateHarnessCommand,
+							InvokeHarnessCommand,
+							GetHarnessCommand,
+							ListHarnessesCommand,
+						},
+						staticData,
+					);
 					returnData.push({ json: result, pairedItem: { item: itemIndex } });
 				} else if (operation === 'invokeExisting') {
 					const result = await invokeExisting(this, itemIndex, dataClient, InvokeHarnessCommand);
@@ -246,13 +253,9 @@ async function runAgent(
 
 		const existing = await resolveExistingHarness(controlClient, commands, agentName);
 		if (existing) {
-			const { DeleteHarnessCommand } = await import(
-				'@aws-sdk/client-bedrock-agentcore-control'
-			);
+			const { DeleteHarnessCommand } = await import('@aws-sdk/client-bedrock-agentcore-control');
 			try {
-				await controlClient.send(
-					new DeleteHarnessCommand({ harnessId: existing.harnessId }),
-				);
+				await controlClient.send(new DeleteHarnessCommand({ harnessId: existing.harnessId }));
 			} catch {
 				// best-effort; fall through to create and let AWS surface any real error
 			}
@@ -437,7 +440,7 @@ async function invokeExisting(
 
 function validateAgentName(name: string): void {
 	if (!/^[A-Za-z][A-Za-z0-9_]{0,39}$/.test(name)) {
-		throw new Error(
+		throw new ApplicationError(
 			`Invalid agent name: "${name}". Must start with a letter and contain only letters, numbers, and underscores (max 40 chars).`,
 		);
 	}
@@ -547,12 +550,12 @@ async function createHarness(
 	const response = await controlClient.send(new CreateHarnessCommand(payload));
 	const harness = response.harness ?? {};
 	if (!harness.harnessId || !harness.arn) {
-		throw new Error('CreateHarness did not return harnessId and arn');
+		throw new ApplicationError('CreateHarness did not return harnessId and arn');
 	}
 
 	const ready = await waitForHarnessReady(controlClient, harness.harnessId);
 	if (ready.status !== 'READY') {
-		throw new Error(
+		throw new ApplicationError(
 			`Harness ${harness.harnessId} reached terminal state ${ready.status}: ${ready.failureReason}`,
 		);
 	}
@@ -596,7 +599,7 @@ async function updateHarness(
 
 	const ready = await waitForHarnessReady(controlClient, harnessId);
 	if (ready.status !== 'READY') {
-		throw new Error(
+		throw new ApplicationError(
 			`Harness ${harnessId} update reached terminal state ${ready.status}: ${ready.failureReason}`,
 		);
 	}

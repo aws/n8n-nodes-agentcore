@@ -18,3 +18,12 @@ node_modules/
 
 # OS
 .DS_Store
+
+# npm pack output (created when CI runs `npm pack`, and locally during release testing)
+*.tgz
+
+# TypeScript incremental build cache
+*.tsbuildinfo
+
+# Test coverage output (for when tests land in v0.2)
+coverage/

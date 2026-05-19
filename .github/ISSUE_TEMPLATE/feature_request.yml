@@ -1,0 +1,38 @@
+name: Feature Request
+description: Suggest a new feature for n8n-nodes-agentcore
+labels: ['enhancement']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Note: features deferred per the SPEC roadmap (inline functions v0.2, memory auto-provisioning v0.3, custom containers v0.4, CloudFormation quick-create v0.5) are already tracked. Please open a feature request for things outside that roadmap, or to advocate for prioritization changes.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What workflow are you trying to build that the node doesn't currently support?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed
+    attributes:
+      label: Proposed solution
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      placeholder: |
+        - [ ] Node UI exposes ...
+        - [ ] Documented in README under ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context

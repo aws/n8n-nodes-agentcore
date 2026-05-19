@@ -1,0 +1,160 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump_type:
+        description: 'Version bump type'
+        required: true
+        type: choice
+        options: [patch, minor, major, prerelease]
+        default: patch
+      prerelease_tag:
+        description: 'Prerelease tag (beta/rc) - only used with prerelease bump'
+        required: false
+        type: string
+        default: 'beta'
+
+# This workflow is the only place that touches npm. Everything else is read-only.
+permissions:
+  contents: read
+
+concurrency:
+  # Never run two releases at once.
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Prepare release branch + PR
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
+      dist_tag: ${{ steps.bump.outputs.dist_tag }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+
+      - name: Configure git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump version
+        id: bump
+        env:
+          BUMP_TYPE: ${{ inputs.bump_type }}
+          PRERELEASE_TAG: ${{ inputs.prerelease_tag }}
+        run: |
+          set -e
+          if [ "$BUMP_TYPE" = "prerelease" ]; then
+            npm version "pre$BUMP_TYPE" --preid="$PRERELEASE_TAG" --no-git-tag-version
+            echo "dist_tag=$PRERELEASE_TAG" >> "$GITHUB_OUTPUT"
+          else
+            npm version "$BUMP_TYPE" --no-git-tag-version
+            echo "dist_tag=latest" >> "$GITHUB_OUTPUT"
+          fi
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Bumped to $VERSION"
+
+      - name: Open release PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          set -e
+          BRANCH="release/v$VERSION"
+          git checkout -b "$BRANCH"
+          git add package.json package-lock.json
+          git commit -m "chore: release v$VERSION"
+          git push origin "$BRANCH"
+          gh pr create \
+            --base main \
+            --head "$BRANCH" \
+            --label release \
+            --title "chore: release v$VERSION" \
+            --body "Automated release PR for v$VERSION.
+
+          Merging this triggers the \`publish\` job, which is gated on the \`npm-publish\` environment (manual approval required).
+
+          ### Pre-merge checklist
+          - [ ] CHANGELOG.md updated under \`## [$VERSION]\`
+          - [ ] Version in package.json is correct
+          - [ ] All CI checks green"
+
+  publish:
+    name: Publish to npm
+    needs: prepare
+    runs-on: ubuntu-latest
+    # The environment is the manual-approval gate.
+    environment:
+      name: npm-publish
+      url: https://www.npmjs.com/package/n8n-nodes-agentcore
+    permissions:
+      contents: write   # tag + release
+      id-token: write   # OIDC for npm trusted publishing
+
+    steps:
+      - name: Checkout main (post-merge)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Ensure npm version supports trusted publishing
+        run: npm install -g npm@latest
+
+      - name: Confirm version on main matches expectation
+        env:
+          EXPECTED: ${{ needs.prepare.outputs.version }}
+        run: |
+          ACTUAL=$(node -p "require('./package.json').version")
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "main is at $ACTUAL, expected $EXPECTED. Merge the release PR first."
+            exit 1
+          fi
+
+      - run: npm ci
+      - run: npm run build
+      - run: npm run lint
+      - run: npm run typecheck
+
+      - name: Publish (OIDC + provenance)
+        env:
+          DIST_TAG: ${{ needs.prepare.outputs.dist_tag }}
+        run: |
+          npm publish --access public --provenance --tag "$DIST_TAG"
+
+      - name: Tag and create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "v$VERSION" -m "Release v$VERSION"
+          git push origin "v$VERSION"
+          PRERELEASE_FLAG=""
+          if [ "${{ needs.prepare.outputs.dist_tag }}" != "latest" ]; then
+            PRERELEASE_FLAG="--prerelease"
+          fi
+          gh release create "v$VERSION" \
+            --title "v$VERSION" \
+            --generate-notes \
+            $PRERELEASE_FLAG

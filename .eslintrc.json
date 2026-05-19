@@ -1,0 +1,47 @@
+{
+  "root": true,
+  "env": {
+    "browser": false,
+    "es2022": true,
+    "node": true
+  },
+  "parser": "@typescript-eslint/parser",
+  "parserOptions": {
+    "sourceType": "module",
+    "extraFileExtensions": [".json"]
+  },
+  "ignorePatterns": [
+    ".eslintrc.js",
+    "**/*.js",
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/coverage/**"
+  ],
+  "overrides": [
+    {
+      "files": ["package.json"],
+      "plugins": ["eslint-plugin-n8n-nodes-base"],
+      "extends": ["plugin:n8n-nodes-base/community"],
+      "rules": {
+        "n8n-nodes-base/community-package-json-name-still-default": "off",
+        "n8n-nodes-base/community-package-json-license-not-default": "off"
+      }
+    },
+    {
+      "files": ["./credentials/**/*.ts"],
+      "parserOptions": {
+        "project": ["./tsconfig.json"]
+      },
+      "plugins": ["eslint-plugin-n8n-nodes-base"],
+      "extends": ["plugin:n8n-nodes-base/credentials"]
+    },
+    {
+      "files": ["./nodes/**/*.ts", "./nodes/**/*.node.json"],
+      "parserOptions": {
+        "project": ["./tsconfig.json"]
+      },
+      "plugins": ["eslint-plugin-n8n-nodes-base"],
+      "extends": ["plugin:n8n-nodes-base/nodes"]
+    }
+  ]
+}

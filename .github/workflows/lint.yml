@@ -1,0 +1,122 @@
+name: Quality and Safety Checks
+
+on:
+  push:
+    branches: ['main']
+  pull_request:
+    branches: ['main']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: 'npm'
+      - run: npm ci
+      - name: Cache node_modules
+        uses: actions/cache/save@v4
+        with:
+          path: node_modules
+          key: node-modules-${{ hashFiles('package-lock.json') }}
+
+  format:
+    needs: setup
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+      - uses: actions/cache/restore@v4
+        with:
+          path: node_modules
+          key: node-modules-${{ hashFiles('package-lock.json') }}
+      - run: npm run format:check
+
+  lint:
+    needs: setup
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+      - uses: actions/cache/restore@v4
+        with:
+          path: node_modules
+          key: node-modules-${{ hashFiles('package-lock.json') }}
+      - run: npm run lint
+
+  typecheck:
+    needs: setup
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+      - uses: actions/cache/restore@v4
+        with:
+          path: node_modules
+          key: node-modules-${{ hashFiles('package-lock.json') }}
+      - run: npm run typecheck
+
+  security:
+    needs: setup
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+      - uses: actions/cache/restore@v4
+        with:
+          path: node_modules
+          key: node-modules-${{ hashFiles('package-lock.json') }}
+      # Fails the build on high or critical CVEs in runtime deps.
+      # Two runtime deps today, both AWS-maintained, so this should be quiet.
+      - run: npm run security:audit
+
+  secrets:
+    needs: setup
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # secretlint scans history-aware paths
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+      - uses: actions/cache/restore@v4
+        with:
+          path: node_modules
+          key: node-modules-${{ hashFiles('package-lock.json') }}
+      - run: npm run secrets:check
+
+  no-eval:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Spec §9 says "Zero exec / spawn / eval / file-system writes". Enforce it in CI.
+      # A grep is cheaper than ESLint rules here and catches additions outside lint scope.
+      - name: Disallow eval/exec/spawn in source
+        run: |
+          set -e
+          PATTERN='eval\s*\(|child_process|new\s+Function\s*\(|writeFileSync|writeFile\b|appendFileSync|spawn(Sync)?\s*\('
+          if grep -REn --include='*.ts' "${PATTERN}" nodes credentials; then
+            echo ""
+            echo "Disallowed runtime sink found in source. The node must not exec/eval/write files."
+            echo "If this is intentional (e.g. internal SDK use), refactor or update this check."
+            exit 1
+          fi
+          echo "OK: No disallowed sinks"
