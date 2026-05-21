@@ -2,6 +2,7 @@
  * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
+import { createHash } from 'crypto';
 import type { IDataObject } from 'n8n-workflow';
 
 export interface ToolConfig {
@@ -121,10 +122,5 @@ export function configHash(input: {
 		maxTokens: input.maxTokens ?? null,
 		timeoutSeconds: input.timeoutSeconds ?? null,
 	});
-	// Simple hash that doesn't require crypto. Sufficient for drift detection.
-	let h = 0;
-	for (let i = 0; i < normalized.length; i++) {
-		h = (h * 31 + normalized.charCodeAt(i)) | 0;
-	}
-	return h.toString(36);
+	return createHash('sha256').update(normalized).digest('hex');
 }
