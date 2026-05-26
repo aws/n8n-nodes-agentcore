@@ -4,8 +4,12 @@
  */
 import {
 	ApplicationError,
+	type ICredentialDataDecryptedObject,
+	type ICredentialTestFunctions,
+	type ICredentialsDecrypted,
 	type IDataObject,
 	type IExecuteFunctions,
+	type INodeCredentialTestResult,
 	type INodeExecutionData,
 	type INodeType,
 	type INodeTypeDescription,
@@ -72,6 +76,7 @@ export class AgentCoreHarness implements INodeType {
 			{
 				name: 'agentCoreApi',
 				required: true,
+				testedBy: 'agentCoreApiTest',
 			},
 		],
 		properties: [
@@ -101,6 +106,38 @@ export class AgentCoreHarness implements INodeType {
 			...runOperationFields,
 			...invokeExistingOperationFields,
 		],
+	};
+
+	// Validates credentials when the user clicks "Test" in the n8n credential UI.
+	// Reuses the same helpers as execute() to ensure the test path mirrors runtime behavior.
+	methods = {
+		credentialTest: {
+			async agentCoreApiTest(
+				this: ICredentialTestFunctions,
+				credential: ICredentialsDecrypted<ICredentialDataDecryptedObject>,
+			): Promise<INodeCredentialTestResult> {
+				try {
+					const creds = credential.data!;
+					const region = getRegion(creds);
+					const awsCreds = getAwsCredentials(creds);
+					const controlEndpoint = getControlEndpoint(creds);
+
+					const { BedrockAgentCoreControlClient, ListHarnessesCommand } =
+						await import('@aws-sdk/client-bedrock-agentcore-control');
+
+					const client = new BedrockAgentCoreControlClient({
+						region,
+						credentials: awsCreds,
+						...(controlEndpoint ? { endpoint: controlEndpoint } : {}),
+					});
+
+					await client.send(new ListHarnessesCommand({ maxResults: 1 }));
+					return { status: 'OK', message: 'Connection successful' };
+				} catch (error) {
+					return { status: 'Error', message: (error as Error).message };
+				}
+			},
+		},
 	};
 
 	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
@@ -232,6 +269,7 @@ async function runAgent(
 			{ itemIndex },
 		);
 	}
+	validateExecutionRoleArn(executionRoleArn);
 
 	const desiredHash = configHash({
 		modelId,
@@ -395,6 +433,7 @@ async function invokeExisting(
 	InvokeHarnessCommand: any,
 ): Promise<IDataObject> {
 	const harnessArn = ctx.getNodeParameter('harnessArn', itemIndex) as string;
+	validateHarnessArn(harnessArn);
 	const prompt = ctx.getNodeParameter('prompt', itemIndex) as string;
 	const overrides = ctx.getNodeParameter('overrides', itemIndex, {}) as IDataObject;
 
@@ -442,6 +481,22 @@ function validateAgentName(name: string): void {
 	if (!/^[A-Za-z][A-Za-z0-9_]{0,39}$/.test(name)) {
 		throw new ApplicationError(
 			`Invalid agent name: "${name}". Must start with a letter and contain only letters, numbers, and underscores (max 40 chars).`,
+		);
+	}
+}
+
+function validateHarnessArn(arn: string): void {
+	if (!/^arn:aws:bedrock-agentcore:[a-z0-9-]+:\d{12}:harness\/[A-Za-z0-9_-]+$/.test(arn)) {
+		throw new ApplicationError(
+			`Invalid harness ARN: "${arn}". Expected format: arn:aws:bedrock-agentcore:<region>:<account-id>:harness/<harness-id>`,
+		);
+	}
+}
+
+function validateExecutionRoleArn(arn: string): void {
+	if (!/^arn:aws:iam::\d{12}:role\/[\w+=,.@\/-]+$/.test(arn)) {
+		throw new ApplicationError(
+			`Invalid execution role ARN: "${arn}". Expected format: arn:aws:iam::<account-id>:role/<role-name>`,
 		);
 	}
 }
@@ -495,27 +550,26 @@ async function resolveExistingHarness(
 }
 
 function resolveSessionId(input: string): string {
-	if (!input) {
-		// runtimeSessionId requires >= 33 chars; UUIDs are 36.
-		return randomUUID();
+	if (!input) return randomUUID();
+
+	const isValid = /^[A-Za-z0-9_-]+$/.test(input);
+	const hash = createHash('sha256').update(input).digest('hex');
+	let sessionId: string;
+
+	if (isValid && input.length >= 33) {
+		// Valid and meets minimum length — use as-is
+		sessionId = input.slice(0, 128);
+	} else if (isValid) {
+		// Valid but too short — extend deterministically to meet 33-char minimum
+		sessionId = `${input}-${hash}`.slice(0, 128);
+	} else {
+		// Contains invalid characters — sanitize and append hash of original to prevent collisions
+		// Truncate sanitized prefix to guarantee full 64-char hash is preserved
+		const sanitized = input.replace(/[^A-Za-z0-9_-]/g, '_');
+		sessionId = `${sanitized.slice(0, 63)}-${hash}`;
 	}
 
-	// Sanitize: AgentCore runtimeSessionId is restricted to [A-Za-z0-9_-].
-	// Replace disallowed characters with '_' rather than dropping them, so
-	// logically distinct inputs stay distinct after sanitization.
-	const sanitized = input.replace(/[^A-Za-z0-9_-]/g, '_');
-
-	if (sanitized.length >= 33) {
-		// Cap at 128 to stay well under any API limit while allowing long
-		// composite IDs like "{customerId}-{threadId}".
-		return sanitized.slice(0, 128);
-	}
-
-	// Deterministically extend short inputs so that the same logical key
-	// (e.g. customer-thread) maps to the same session across executions.
-	// SHA-256 over the sanitized input is stable and collision-resistant.
-	const hash = createHash('sha256').update(sanitized).digest('hex').slice(0, 40);
-	return `${sanitized}-${hash}`.slice(0, 128);
+	return sessionId;
 }
 
 async function createHarness(
