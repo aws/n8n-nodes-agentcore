@@ -55,7 +55,7 @@ export function buildToolsArray(toolsUi: IDataObject | undefined): ToolConfig[] 
 				tools.push({
 					type: 'agentcore_gateway',
 					name: (uiTool.name as string) || 'gateway',
-					config: { gatewayArn },
+					config: { agentCoreGateway: { gatewayArn } },
 				});
 				break;
 			}

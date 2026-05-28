@@ -25,28 +25,6 @@ export function getExecutionRoleArn(creds: ICredentialDataDecryptedObject): stri
 	return (creds.executionRoleArn as string) || '';
 }
 
-export function getDataEndpoint(creds: ICredentialDataDecryptedObject): string | undefined {
-	return validateEndpointUrl((creds.endpointUrl as string) || '');
-}
-
-export function getControlEndpoint(creds: ICredentialDataDecryptedObject): string | undefined {
-	return validateEndpointUrl((creds.controlEndpointUrl as string) || '');
-}
-
-const VALID_ENDPOINT_PATTERN =
-	/^https:\/\/bedrock-agentcore(-control)?\.[a-z0-9-]+\.amazonaws\.com$/;
-
-function validateEndpointUrl(url: string): string | undefined {
-	const trimmed = url.trim();
-	if (trimmed === '') return undefined;
-
-	if (!VALID_ENDPOINT_PATTERN.test(trimmed)) {
-		throw new Error(`Invalid endpoint URL. Must match ${VALID_ENDPOINT_PATTERN}`);
-	}
-
-	return trimmed;
-}
-
 /**
  * Polls GetHarness until READY or a terminal failure state.
  * Default timeout 180 seconds matches typical harness creation time.
