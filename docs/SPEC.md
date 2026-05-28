@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | v0.1 — pre-release, in private testing |
-| **Owner** | AWS Bedrock AgentCore team |
+| **Owner** | Amazon Bedrock AgentCore team |
 | **Distribution** | npm community node + AWS public GitHub org |
 | **License** | Apache-2.0 |
 | **Audience for this doc** | Engineers, PMs, partners, security reviewers |

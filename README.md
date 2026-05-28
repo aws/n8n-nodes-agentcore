@@ -55,34 +55,44 @@ You need:
 3. **An IAM execution role** that the harness assumes when running, with a trust policy and permissions described below
 4. **An enabled foundation model** in the Amazon Bedrock console (Claude Haiku, Sonnet, etc.)
 
-### IAM setup (one-time)
+### IAM setup
 
-#### Step 1 — Create the execution role
+**1. Caller permissions** — the IAM user or role whose access keys go into the
+n8n credential needs the actions listed in the [Required IAM permissions for
+callers](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/harness-security.html#harness-iam-callers)
+table, scoped to your harness ARN(s).
 
-Save `docs/iam-trust-policy.json` and `docs/iam-permissions-policy.json` from this repo, then run:
+**2. Trust policy** for the execution role:
 
-```bash
-aws iam create-role \
-  --role-name HarnessExecutionRole \
-  --assume-role-policy-document file://docs/iam-trust-policy.json
-
-aws iam put-role-policy \
-  --role-name HarnessExecutionRole \
-  --policy-name HarnessExecutionPolicy \
-  --policy-document file://docs/iam-permissions-policy.json
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Principal": {"Service": "bedrock-agentcore.amazonaws.com"},
+    "Action": "sts:AssumeRole"
+  }]
+}
 ```
 
-Copy the role ARN from the output: `arn:aws:iam::<ACCOUNT_ID>:role/HarnessExecutionRole`.
+**3. Permissions policy** for the execution role: use the
+[Sample execution role policy](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/harness-security.html#harness-execution-role-policy)
+maintained in the AgentCore developer guide. Append optional add-ons based on
+what your workflow uses:
 
-#### Step 2 — Attach the user policy
+- BYO Memory ARN → AgentCore Memory add-on
+- Gateway tool → AgentCore Gateway add-on
+- (OpenAI / Gemini and OAuth-protected Gateway are v0.2 features — not needed for v0.1)
 
-Attach `docs/iam-user-policy.json` to the IAM user whose access keys you'll use in n8n.
+AWS maintains this policy and updates it as AgentCore ships new features —
+single source of truth.
 
-> **Coming in v1.1:** A one-click CloudFormation quick-create link will replace these manual steps.
+> v0.2 will replace this manual step with `agentcore iam create-execution-role`
+> which generates the role automatically.
 
 ## Configuring credentials
 
-In n8n, go to **Credentials → New → AWS Bedrock AgentCore API** and fill in:
+In n8n, go to **Credentials → New → Amazon Bedrock AgentCore API** and fill in:
 
 | Field | Value |
 | ----- | ----- |
@@ -173,11 +183,11 @@ npm link n8n-nodes-agentcore
 npx n8n start
 ```
 
-Open `http://localhost:5678`. The **AWS Bedrock AgentCore** node should appear in the node palette under the AI / AWS categories.
+Open `http://localhost:5678`. The **Amazon Bedrock AgentCore** node should appear in the node palette under the AI / AWS categories.
 
 ### Step 5 — Configure credentials and run an example
 
-1. Add an **AWS Bedrock AgentCore API** credential with your IAM access keys, region, and execution role ARN
+1. Add an **Amazon Bedrock AgentCore API** credential with your IAM access keys, region, and execution role ARN
 2. **Workflows → Import from File** → select `examples/01-mcp-research-agent.json`
 3. Attach the credential to the agent node
 4. Click **Execute Workflow**

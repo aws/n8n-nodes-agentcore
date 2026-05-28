@@ -7,7 +7,7 @@ import type { ICredentialType, INodeProperties } from 'n8n-workflow';
 export class AgentCoreApi implements ICredentialType {
 	name = 'agentCoreApi';
 
-	displayName = 'AWS Bedrock AgentCore API';
+	displayName = 'Amazon Bedrock AgentCore API';
 
 	// eslint-disable-next-line n8n-nodes-base/cred-class-field-documentation-url-miscased
 	documentationUrl = 'https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/harness.html';
@@ -62,24 +62,6 @@ export class AgentCoreApi implements ICredentialType {
 			placeholder: 'arn:aws:iam::123456789012:role/HarnessExecutionRole',
 			description:
 				'IAM role the Harness assumes when running. Must trust the bedrock-agentcore.amazonaws.com service principal. See the README for the trust policy and minimum permissions.',
-		},
-		{
-			displayName: 'Custom Endpoint URL (Advanced)',
-			name: 'endpointUrl',
-			type: 'string',
-			default: '',
-			placeholder: 'https://bedrock-agentcore.us-west-2.amazonaws.com',
-			description:
-				'Optional. Override the AgentCore data plane endpoint. Leave blank for standard AWS SDK resolution. Use this only for preview testing.',
-		},
-		{
-			displayName: 'Custom Control Plane Endpoint URL (Advanced)',
-			name: 'controlEndpointUrl',
-			type: 'string',
-			default: '',
-			placeholder: 'https://bedrock-agentcore-control.us-west-2.amazonaws.com',
-			description:
-				'Optional. Override the AgentCore control plane endpoint. Leave blank for standard AWS SDK resolution. Use this only for preview testing.',
 		},
 	];
 }

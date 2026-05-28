@@ -23,8 +23,6 @@ import { invokeExistingOperationFields } from './descriptions/InvokeExistingOper
 import { buildToolsArray, configHash, type ToolConfig } from './helpers/tools';
 import {
 	getAwsCredentials,
-	getControlEndpoint,
-	getDataEndpoint,
 	getExecutionRoleArn,
 	getRegion,
 	waitForHarnessReady,
@@ -48,7 +46,7 @@ interface NodeStaticData {
 
 export class AgentCoreHarness implements INodeType {
 	description: INodeTypeDescription = {
-		displayName: 'AWS Bedrock AgentCore',
+		displayName: 'Amazon Bedrock AgentCore',
 		name: 'agentCoreHarness',
 		icon: 'file:agentcore.svg',
 		group: ['transform'],
@@ -120,7 +118,6 @@ export class AgentCoreHarness implements INodeType {
 					const creds = credential.data!;
 					const region = getRegion(creds);
 					const awsCreds = getAwsCredentials(creds);
-					const controlEndpoint = getControlEndpoint(creds);
 
 					const { BedrockAgentCoreControlClient, ListHarnessesCommand } =
 						await import('@aws-sdk/client-bedrock-agentcore-control');
@@ -128,7 +125,6 @@ export class AgentCoreHarness implements INodeType {
 					const client = new BedrockAgentCoreControlClient({
 						region,
 						credentials: awsCreds,
-						...(controlEndpoint ? { endpoint: controlEndpoint } : {}),
 					});
 
 					await client.send(new ListHarnessesCommand({ maxResults: 1 }));
@@ -147,8 +143,6 @@ export class AgentCoreHarness implements INodeType {
 		const creds = await this.getCredentials('agentCoreApi');
 		const region = getRegion(creds);
 		const awsCreds = getAwsCredentials(creds);
-		const dataEndpoint = getDataEndpoint(creds);
-		const controlEndpoint = getControlEndpoint(creds);
 
 		const {
 			BedrockAgentCoreControlClient,
@@ -163,12 +157,10 @@ export class AgentCoreHarness implements INodeType {
 		const controlClient = new BedrockAgentCoreControlClient({
 			region,
 			credentials: awsCreds,
-			...(controlEndpoint ? { endpoint: controlEndpoint } : {}),
 		});
 		const dataClient = new BedrockAgentCoreClient({
 			region,
 			credentials: awsCreds,
-			...(dataEndpoint ? { endpoint: dataEndpoint } : {}),
 		});
 
 		const staticData = this.getWorkflowStaticData('node') as NodeStaticData;
@@ -265,7 +257,7 @@ async function runAgent(
 	if (!executionRoleArn) {
 		throw new NodeOperationError(
 			ctx.getNode(),
-			'Execution Role ARN is required. Configure it on the AWS Bedrock AgentCore credential.',
+			'Execution Role ARN is required. Configure it on the Amazon Bedrock AgentCore credential.',
 			{ itemIndex },
 		);
 	}
@@ -598,7 +590,12 @@ async function createHarness(
 	if (maxTokens !== undefined) payload.maxTokens = maxTokens;
 	if (timeoutSeconds !== undefined) payload.timeoutSeconds = timeoutSeconds;
 	if (memoryArn) {
-		payload.memory = { arn: memoryArn, ...(actorId ? { actorId } : {}) };
+		payload.memory = {
+			agentCoreMemoryConfiguration: {
+				arn: memoryArn,
+				...(actorId ? { actorId } : {}),
+			},
+		};
 	}
 
 	const response = await controlClient.send(new CreateHarnessCommand(payload));
@@ -646,7 +643,14 @@ async function updateHarness(
 	if (maxTokens !== undefined) payload.maxTokens = maxTokens;
 	if (timeoutSeconds !== undefined) payload.timeoutSeconds = timeoutSeconds;
 	if (memoryArn) {
-		payload.memory = { arn: memoryArn, ...(actorId ? { actorId } : {}) };
+		payload.memory = {
+			optionalValue: {
+				agentCoreMemoryConfiguration: {
+					arn: memoryArn,
+					...(actorId ? { actorId } : {}),
+				},
+			},
+		};
 	}
 
 	await controlClient.send(new UpdateHarnessCommand(payload));
@@ -696,11 +700,8 @@ function buildInvokePayload(input: InvokePayloadInput): IDataObject {
 	if (input.tools && input.tools.length > 0) {
 		payload.tools = input.tools;
 	}
-	if (input.memoryArn) {
-		payload.memory = {
-			arn: input.memoryArn,
-			...(input.actorId ? { actorId: input.actorId } : {}),
-		};
+	if (input.actorId) {
+		payload.actorId = input.actorId;
 	}
 	if (input.maxIterations !== undefined) payload.maxIterations = input.maxIterations;
 	if (input.maxTokens !== undefined) payload.maxTokens = input.maxTokens;
