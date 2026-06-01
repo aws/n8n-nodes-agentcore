@@ -62,8 +62,8 @@
     "typescript": "^5.4.0"
   },
   "dependencies": {
-    "@aws-sdk/client-bedrock-agentcore": "^3.700.0",
-    "@aws-sdk/client-bedrock-agentcore-control": "^3.700.0"
+    "@aws-sdk/client-bedrock-agentcore": "^3.1058.0",
+    "@aws-sdk/client-bedrock-agentcore-control": "^3.1058.0"
   },
   "peerDependencies": {
     "n8n-workflow": "*"
