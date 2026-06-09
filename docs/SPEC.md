@@ -20,7 +20,7 @@ The node auto-provisions a Harness on first execution, reuses it on subsequent r
 
 ### In scope (v0.1)
 
-- One n8n node (`AgentCoreHarness`) with two operations
+- One n8n node (`AgentCoreHarness`) with a single operation; the Harness ARN field selects between auto-provision and bring-your-own-ARN behavior
 - One credential type (`AgentCoreApi`) reusing n8n's standard AWS credential pattern
 - Inline tool configuration for AgentCore-native tools (Browser, Code Interpreter, Gateway, remote MCP)
 - Streaming response handling with structured output (text, tool-use trace, usage, latency)
@@ -100,26 +100,23 @@ Three audiences, in priority order:
 
 ### Node — `AgentCoreHarness`
 
-Two operations.
+A single operation. The **Harness ARN** field is the mode discriminator: blank → auto-provision and reuse (primary path); populated → invoke an externally-created harness directly.
 
-#### Operation 1: Run Agent
+| Field | Type | Required | Visibility | Description |
+|---|---|---|---|---|
+| Harness ARN | string | no | always | Blank = Run Agent (auto-provision). Populated = invoke this harness directly. |
+| Agent Name | string | yes (run mode) | ARN blank | Logical name. Letters, numbers, underscores, max 40 chars. Cache key — one name = one harness. |
+| Model ID | string | no | always | Bedrock model ID. Run mode: defaults to Claude Haiku 4.5 if blank. Invoke mode: per-invocation override if set. |
+| System Prompt | string | no | always | Agent instructions. Run mode: defaults if blank. Invoke mode: override if set. |
+| Prompt | string | yes | always | User message (n8n expressions supported) |
+| Tools | collection | no | always | Inline tool config: Browser, Code Interpreter, Gateway, remote MCP. Invoke mode: override. |
+| Session ID | string | no | always | For multi-turn. Auto-generated when blank. |
+| Additional Options | collection | no | always | Actor ID, Max Iterations, Max Tokens, Timeout. Invoke mode: overrides. |
+| Provisioning Options | collection | no | ARN blank | Memory ARN (BYO) and Force Recreate — lifecycle-only, hidden in invoke mode. |
 
-Auto-provisions and reuses a harness scoped to the workflow. **Primary path** for most users.
+**Mode resolution:** at execution the node reads Harness ARN. If non-empty (after trim) it validates the ARN and calls `InvokeHarness` directly, applying any filled config field as a per-invocation override. If empty it runs the auto-provision lifecycle below.
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| Agent Name | string | yes | Logical name. Letters, numbers, underscores, max 40 chars. One name = one harness. |
-| Model ID | string | yes | Bedrock model ID (default: Claude Haiku 4.5) |
-| System Prompt | string | yes | Agent instructions |
-| Prompt | string | yes | User message (n8n expressions supported) |
-| Tools | collection | no | Inline tool config: Browser, Code Interpreter, Gateway, remote MCP |
-| Session ID | string | no | For multi-turn. Auto-generated when blank. |
-| Memory ARN | string | no | BYO existing memory ARN (v0.1; auto-provisioning in v0.3) |
-| Actor ID | string | no | Memory scoping when Memory ARN is set |
-| Max Iterations / Tokens / Timeout | number | no | Execution limits |
-| Force Recreate | boolean | no | Delete and recreate harness instead of updating |
-
-**Lifecycle:**
+**Run Agent lifecycle (ARN blank):**
 
 1. Compute config hash from current field values
 2. Look up existing harness in workflow static data
@@ -127,17 +124,6 @@ Auto-provisions and reuses a harness scoped to the workflow. **Primary path** fo
 4. If found: reuse if config hash matches; `UpdateHarness` if hash differs
 5. If not found: `CreateHarness`, poll `GetHarness` until READY (~30s)
 6. `InvokeHarness` with streaming, accumulate response
-
-#### Operation 2: Invoke Existing Harness
-
-For users with harnesses deployed outside n8n (CLI, console, CloudFormation, Terraform).
-
-| Field | Type | Required | Description |
-|---|---|---|---|
-| Harness ARN | string | yes | Existing harness ARN |
-| Prompt | string | yes | User message |
-| Session ID | string | no | Multi-turn |
-| Per-Invocation Overrides | collection | no | Override model, system prompt, tools, limits for this call only |
 
 ### Credential — `AgentCoreApi`
 
@@ -148,8 +134,6 @@ For users with harnesses deployed outside n8n (CLI, console, CloudFormation, Ter
 | Session Token | no | For STS temporary credentials |
 | Region | yes | AgentCore-supported AWS region |
 | Execution Role ARN | yes | The role AgentCore assumes at runtime — non-secret |
-| Custom Endpoint URL | no | Preview-only, validated against AWS hostnames at runtime |
-| Custom Control Plane Endpoint URL | no | Same — preview-only override |
 
 ## 6. Output shape
 
@@ -183,9 +167,9 @@ Two AWS principals, two policies. The most common confusion point for reviewers 
 
 Attached to the IAM user whose access key/secret are stored in the n8n credential.
 
-Required actions: `bedrock-agentcore:CreateHarness`, `GetHarness`, `UpdateHarness`, `ListHarnesses`, `DeleteHarness`, `InvokeHarness`, plus `iam:PassRole` scoped to `bedrock-agentcore.amazonaws.com`.
+Required actions: `bedrock-agentcore:` CreateHarness, GetHarness, UpdateHarness, ListHarnesses, DeleteHarness, InvokeHarness, plus the paired runtime actions CreateAgentRuntime, UpdateAgentRuntime, DeleteAgentRuntime, InvokeAgentRuntime — harness APIs authorize against both the harness resource and the underlying AgentCore Runtime resource. All actions except ListHarnesses are scoped to `arn:aws:bedrock-agentcore:<region>:<account>:harness/*`; ListHarnesses requires `Resource: "*"`.
 
-For testing, the AWS managed policy `BedrockAgentCoreFullAccess` is acceptable. Production policy is being narrowed via CloudTrail before public release.
+For testing, use the least-privilege scoped caller policy described above rather than the broad `BedrockAgentCoreFullAccess` managed policy. `iam:PassRole` is not required for this flow: the execution role ARN is passed to CreateHarness as a parameter and assumed by the AgentCore service, not passed by the caller.
 
 ### Principal B — Harness execution role (assumed by AgentCore at runtime)
 
@@ -202,7 +186,7 @@ Permissions cover what the harness does at runtime:
 - (Conditional) `bedrock-agentcore:Start/Stop/Get/ListBrowserSession`, `UpdateBrowserStream`, `Connect*Stream` scoped to `arn:aws:bedrock-agentcore:REGION:aws:browser/*` — when Browser tool is configured
 - (Conditional) `bedrock-agentcore:Start/Stop/Get/ListCodeInterpreterSession`, `InvokeCodeInterpreter` scoped to `arn:aws:bedrock-agentcore:REGION:aws:code-interpreter/*` — when Code Interpreter tool is configured
 
-The reference JSON files are in `docs/`. Customers substitute `REGION` and `ACCOUNT_ID` for their environment.
+AWS maintains the canonical execution-role policy in the AgentCore developer guide; customers substitute `REGION` and `ACCOUNT_ID` for their environment and append the Memory and Gateway add-ons as needed.
 
 ## 9. Security properties
 
@@ -213,7 +197,6 @@ The reference JSON files are in `docs/`. Customers substitute `REGION` and `ACCO
 - **Two production dependencies** — only `@aws-sdk/client-bedrock-agentcore` and `@aws-sdk/client-bedrock-agentcore-control`, both Apache-2.0, AWS-maintained
 - **TypeScript strict mode** enforced
 - **Confused-deputy mitigation** via `aws:SourceAccount` + `aws:SourceArn` conditions in trust policy
-- **PassRole scoped** with `iam:PassedToService = bedrock-agentcore.amazonaws.com` condition
 
 Full threat model lives in `docs/threat-model.md`.
 
@@ -251,15 +234,15 @@ Local-only testing uses Verdaccio (private npm registry in Docker). See `docs/lo
 ### Smoke tests (manual, per release)
 
 1. Create credential, save successfully
-2. Run Agent with no tools — completes, returns response, harness in `READY`
+2. Blank Harness ARN, no tools — completes, returns response, harness in `READY`
 3. Re-run same workflow — fast (~2s), same harness ID
 4. Modify system prompt, re-run — slower (~10–15s), same harness ID, response reflects update
 5. Multi-turn with shared session ID — second node references first prompt
 6. Run Agent with MCP tool — agent uses tool, response cites tool output
 7. Run Agent with Code Interpreter — agent runs code, returns result
 8. Run Agent with Browser — agent navigates, returns content
-9. Invoke Existing Harness with paste-in ARN — works without auto-provision
-10. Force Recreate — deletes and recreates with new ARN
+9. Populated Harness ARN (paste-in) — invokes without auto-provision; filled config fields apply as per-invocation overrides
+10. Force Recreate (blank Harness ARN) — deletes and recreates with new ARN
 
 ### Automated tests
 
@@ -299,7 +282,6 @@ Two-way doors — every deferred feature is additive when it ships:
 
 - `README.md` — user-facing setup and usage
 - `docs/threat-model.md` — full STRIDE threat model
-- `docs/iam-trust-policy.json`, `docs/iam-permissions-policy.json`, `docs/iam-user-policy.json` — reference IAM policies
 - `examples/*.json` — three importable workflows
 - `docs/local-testing.md` — local Verdaccio + n8n development setup
 
@@ -307,4 +289,5 @@ Two-way doors — every deferred feature is additive when it ships:
 
 | Version | Date | Notes |
 |---|---|---|
-| 0.1.0 | TBD (pre-release) | Initial release: Run Agent, Invoke Existing, MCP/Browser/Code Interpreter/Gateway tools |
+| 0.1.0 | TBD (pre-release) | Initial release: single operation (auto-provision or bring-your-own-ARN), MCP/Browser/Code Interpreter/Gateway tools |
+

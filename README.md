@@ -22,8 +22,8 @@ n8n's native AI Agent node is great for simple agents, but hits walls fast: no c
 
 ## Features
 
-- **Run Agent** — Auto-provisions a harness on first run, reuses it across executions, updates it when configuration changes
-- **Invoke Existing Harness** — Bring your own ARN if you deployed via CLI / CloudFormation / console
+- **Auto-provision & reuse** — Leave the Harness ARN blank: the node creates a harness on first run, reuses it across executions, and updates it when configuration changes
+- **Bring your own harness** — Paste a Harness ARN (deployed via CLI / CloudFormation / console / Terraform) to invoke it directly, with any config field acting as a per-invocation override
 - **Inline tool configuration** — AgentCore Browser, Code Interpreter, Gateway, and remote MCP servers
 - **Streaming responses** with structured tool-use trace, token usage, and latency metadata
 - **Session persistence** — pass the same session ID across executions for multi-turn conversations
@@ -98,24 +98,30 @@ In n8n, go to **Credentials → New → Amazon Bedrock AgentCore API** and fill 
 | ----- | ----- |
 | Access Key ID | From your IAM user |
 | Secret Access Key | From your IAM user |
+| Session Token | Optional. Only for temporary STS credentials. |
 | Region | The AgentCore-supported region you want to use |
 | Execution Role ARN | The role ARN from Step 1 |
-| Custom Endpoint URL | Leave blank for GA. Set only for preview. |
 
 Save.
 
-## Operations
+## How it works
 
-### Run Agent (default)
+The node has a single operation. The **Harness ARN** field decides the mode.
 
-Drop the node, type an agent name, set the system prompt and prompt, configure tools, and run. The node:
+### Leave Harness ARN blank — Run Agent
+
+Type an Agent Name, set the system prompt and prompt, configure tools, and run. The node:
 
 - Creates the harness on first execution (~30 seconds), stores the ARN in workflow static data
-- Reuses the same harness on subsequent runs
+- Reuses the same harness on subsequent runs (~3 seconds)
 - Updates the harness if you change the model, system prompt, tools, or limits
 - Streams the response back
 
-**Output shape:**
+### Fill in Harness ARN — Invoke Existing
+
+For a harness deployed outside n8n (CLI, console, CloudFormation, Terraform). The node calls `InvokeHarness` directly (~3 seconds). Any config field you fill in — Model, System Prompt, Tools, Max Iterations / Tokens, Timeout, Actor ID — is sent as a **per-invocation override**; leave a field blank to use the harness's own configuration. The Agent Name, Memory ARN, and Force Recreate fields are hidden in this mode because they only apply when the node owns the harness lifecycle.
+
+**Output shape** (the `operation` field reports the resolved mode, `run` or `invokeExisting`):
 
 ```json
 {
@@ -131,10 +137,6 @@ Drop the node, type an agent name, set the system prompt and prompt, configure t
   "latencyMs": 4123
 }
 ```
-
-### Invoke Existing Harness
-
-For users with an existing harness deployed outside n8n. Paste the ARN, send prompts. Per-invocation overrides for model, system prompt, and tools are supported.
 
 ## Examples
 
@@ -284,3 +286,4 @@ endorsement.
 ## License
 
 Apache-2.0
+
