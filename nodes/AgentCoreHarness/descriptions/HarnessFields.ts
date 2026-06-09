@@ -131,7 +131,8 @@ export const harnessFields: INodeProperties[] = [
 		placeholder: 'Add Option',
 		default: {},
 		displayOptions: RUN_ONLY,
-		description: 'Options that apply only when the node owns the harness lifecycle (Harness ARN blank)',
+		description:
+			'Options that apply only when the node owns the harness lifecycle (Harness ARN blank)',
 		options: [
 			{
 				displayName: 'Force Recreate',

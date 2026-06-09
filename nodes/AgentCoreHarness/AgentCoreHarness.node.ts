@@ -153,9 +153,7 @@ export class AgentCoreHarness implements INodeType {
 				// Harness ARN is the mode discriminator: blank -> auto-provision and
 				// reuse (Run Agent); populated -> invoke that harness directly, with
 				// the config fields applied as per-invocation overrides.
-				const harnessArn = (
-					this.getNodeParameter('harnessArn', itemIndex, '') as string
-				).trim();
+				const harnessArn = (this.getNodeParameter('harnessArn', itemIndex, '') as string).trim();
 
 				let result: IDataObject;
 				if (harnessArn) {
@@ -223,7 +221,7 @@ async function runAgent(
 	// Model and system prompt default to empty at the field level (so invoke mode
 	// sends no override when blank); run mode applies the in-code fallbacks here.
 	const modelId =
-		((ctx.getNodeParameter('modelId', itemIndex, '') as string).trim()) || DEFAULT_MODEL_ID;
+		(ctx.getNodeParameter('modelId', itemIndex, '') as string).trim() || DEFAULT_MODEL_ID;
 	const systemPromptRaw = ctx.getNodeParameter('systemPrompt', itemIndex, '') as string;
 	const systemPrompt = systemPromptRaw.trim() ? systemPromptRaw : DEFAULT_SYSTEM_PROMPT;
 	const prompt = ctx.getNodeParameter('prompt', itemIndex) as string;
@@ -701,4 +699,3 @@ function buildInvokePayload(input: InvokePayloadInput): IDataObject {
 
 	return payload;
 }
-
