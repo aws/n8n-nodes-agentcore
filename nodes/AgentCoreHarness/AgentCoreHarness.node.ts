@@ -18,8 +18,7 @@ import {
 
 import { createHash, randomUUID } from 'crypto';
 
-import { runOperationFields } from './descriptions/RunOperation';
-import { invokeExistingOperationFields } from './descriptions/InvokeExistingOperation';
+import { harnessFields } from './descriptions/HarnessFields';
 import { buildToolsArray, configHash, type ToolConfig } from './helpers/tools';
 import {
 	getAwsCredentials,
@@ -44,6 +43,12 @@ interface NodeStaticData {
 	harnesses?: Record<string, HarnessRecord>;
 }
 
+// Run-mode fallbacks. The merged field set defaults model/system prompt to
+// empty so that, in ARN/invoke mode, a blank field sends no override. Run mode
+// applies these defaults in code instead, preserving the prior behavior.
+const DEFAULT_MODEL_ID = 'global.anthropic.claude-haiku-4-5-20251001-v1:0';
+const DEFAULT_SYSTEM_PROMPT = 'You are a helpful AI assistant.';
+
 export class AgentCoreHarness implements INodeType {
 	description: INodeTypeDescription = {
 		displayName: 'Amazon Bedrock AgentCore',
@@ -51,9 +56,10 @@ export class AgentCoreHarness implements INodeType {
 		icon: 'file:agentcore.svg',
 		group: ['transform'],
 		version: 1,
-		subtitle: '={{$parameter["operation"]}}',
+		subtitle:
+			'={{ $parameter["harnessArn"] ? "Invoke Existing Harness" : ("Run Agent" + ($parameter["agentName"] ? ": " + $parameter["agentName"] : "")) }}',
 		description:
-			'Run AI agents on Amazon Bedrock AgentCore Harness. Auto-provisions and reuses harnesses across executions.',
+			'Run AI agents on Amazon Bedrock AgentCore harness. Auto-provisions and reuses harnesses across executions.',
 		defaults: {
 			name: 'Amazon Bedrock AgentCore',
 		},
@@ -77,33 +83,7 @@ export class AgentCoreHarness implements INodeType {
 				testedBy: 'agentCoreApiTest',
 			},
 		],
-		properties: [
-			{
-				displayName: 'Operation',
-				name: 'operation',
-				type: 'options',
-				noDataExpression: true,
-				default: 'run',
-				options: [
-					{
-						name: 'Run Agent',
-						value: 'run',
-						description:
-							'Run an agent. Auto-provisions the harness on first execution and reuses it thereafter.',
-						action: 'Run an agent',
-					},
-					{
-						name: 'Invoke Existing Harness',
-						value: 'invokeExisting',
-						description:
-							'Invoke a harness deployed outside n8n (CLI, console, CloudFormation, etc.)',
-						action: 'Invoke an existing harness',
-					},
-				],
-			},
-			...runOperationFields,
-			...invokeExistingOperationFields,
-		],
+		properties: [...harnessFields],
 	};
 
 	// Validates credentials when the user clicks "Test" in the n8n credential UI.
@@ -170,10 +150,16 @@ export class AgentCoreHarness implements INodeType {
 
 		for (let itemIndex = 0; itemIndex < items.length; itemIndex++) {
 			try {
-				const operation = this.getNodeParameter('operation', itemIndex) as string;
+				// Harness ARN is the mode discriminator: blank -> auto-provision and
+				// reuse (Run Agent); populated -> invoke that harness directly, with
+				// the config fields applied as per-invocation overrides.
+				const harnessArn = (this.getNodeParameter('harnessArn', itemIndex, '') as string).trim();
 
-				if (operation === 'run') {
-					const result = await runAgent(
+				let result: IDataObject;
+				if (harnessArn) {
+					result = await invokeExisting(this, itemIndex, dataClient, InvokeHarnessCommand);
+				} else {
+					result = await runAgent(
 						this,
 						itemIndex,
 						creds,
@@ -188,15 +174,8 @@ export class AgentCoreHarness implements INodeType {
 						},
 						staticData,
 					);
-					returnData.push({ json: result, pairedItem: { item: itemIndex } });
-				} else if (operation === 'invokeExisting') {
-					const result = await invokeExisting(this, itemIndex, dataClient, InvokeHarnessCommand);
-					returnData.push({ json: result, pairedItem: { item: itemIndex } });
-				} else {
-					throw new NodeOperationError(this.getNode(), `Unknown operation: ${operation}`, {
-						itemIndex,
-					});
 				}
+				returnData.push({ json: result, pairedItem: { item: itemIndex } });
 			} catch (error) {
 				if (this.continueOnFail()) {
 					returnData.push({
@@ -239,19 +218,26 @@ async function runAgent(
 	const agentName = ctx.getNodeParameter('agentName', itemIndex) as string;
 	validateAgentName(agentName);
 
-	const modelId = ctx.getNodeParameter('modelId', itemIndex) as string;
-	const systemPrompt = ctx.getNodeParameter('systemPrompt', itemIndex) as string;
+	// Model and system prompt default to empty at the field level (so invoke mode
+	// sends no override when blank); run mode applies the in-code fallbacks here.
+	const modelId =
+		(ctx.getNodeParameter('modelId', itemIndex, '') as string).trim() || DEFAULT_MODEL_ID;
+	const systemPromptRaw = ctx.getNodeParameter('systemPrompt', itemIndex, '') as string;
+	const systemPrompt = systemPromptRaw.trim() ? systemPromptRaw : DEFAULT_SYSTEM_PROMPT;
 	const prompt = ctx.getNodeParameter('prompt', itemIndex) as string;
 	const toolsUi = ctx.getNodeParameter('tools', itemIndex, {}) as IDataObject;
 	const additional = ctx.getNodeParameter('additionalOptions', itemIndex, {}) as IDataObject;
+	// memoryArn and forceRecreate live in the run-only "Provisioning Options"
+	// collection (hidden when a Harness ARN is provided).
+	const provisioning = ctx.getNodeParameter('provisioningOptions', itemIndex, {}) as IDataObject;
 
 	const tools = buildToolsArray(toolsUi);
 	const maxIterations = additional.maxIterations as number | undefined;
 	const maxTokens = additional.maxTokens as number | undefined;
 	const timeoutSeconds = additional.timeoutSeconds as number | undefined;
-	const memoryArn = (additional.memoryArn as string) || '';
 	const actorId = (additional.actorId as string) || '';
-	const forceRecreate = (additional.forceRecreate as boolean) || false;
+	const memoryArn = (provisioning.memoryArn as string) || '';
+	const forceRecreate = (provisioning.forceRecreate as boolean) || false;
 
 	const executionRoleArn = getExecutionRoleArn(creds);
 	if (!executionRoleArn) {
@@ -424,28 +410,32 @@ async function invokeExisting(
 	dataClient: any,
 	InvokeHarnessCommand: any,
 ): Promise<IDataObject> {
-	const harnessArn = ctx.getNodeParameter('harnessArn', itemIndex) as string;
+	const harnessArn = (ctx.getNodeParameter('harnessArn', itemIndex) as string).trim();
 	validateHarnessArn(harnessArn);
 	const prompt = ctx.getNodeParameter('prompt', itemIndex) as string;
-	const overrides = ctx.getNodeParameter('overrides', itemIndex, {}) as IDataObject;
+
+	// In the merged operation the visible config fields ARE the per-invocation
+	// overrides. A blank field sends nothing, so the harness config is used as-is.
+	const modelId = (ctx.getNodeParameter('modelId', itemIndex, '') as string).trim();
+	const systemPrompt = ctx.getNodeParameter('systemPrompt', itemIndex, '') as string;
+	const toolsUi = ctx.getNodeParameter('tools', itemIndex, {}) as IDataObject;
+	const additional = ctx.getNodeParameter('additionalOptions', itemIndex, {}) as IDataObject;
 
 	const sessionId = resolveSessionId(ctx.getNodeParameter('sessionId', itemIndex, '') as string);
 
-	const overrideTools = overrides.tools
-		? buildToolsArray(overrides.tools as IDataObject)
-		: undefined;
+	const overrideTools = buildToolsArray(toolsUi);
 
 	const invokePayload = buildInvokePayload({
 		harnessArn,
 		runtimeSessionId: sessionId,
 		prompt,
-		modelId: (overrides.modelId as string) || undefined,
-		systemPrompt: (overrides.systemPrompt as string) || undefined,
-		tools: overrideTools,
-		actorId: (overrides.actorId as string) || undefined,
-		maxIterations: overrides.maxIterations as number | undefined,
-		maxTokens: overrides.maxTokens as number | undefined,
-		timeoutSeconds: overrides.timeoutSeconds as number | undefined,
+		modelId: modelId || undefined,
+		systemPrompt: systemPrompt.trim() ? systemPrompt : undefined,
+		tools: overrideTools.length > 0 ? overrideTools : undefined,
+		actorId: (additional.actorId as string) || undefined,
+		maxIterations: additional.maxIterations as number | undefined,
+		maxTokens: additional.maxTokens as number | undefined,
+		timeoutSeconds: additional.timeoutSeconds as number | undefined,
 	});
 
 	const response = await dataClient.send(new InvokeHarnessCommand(invokePayload));

@@ -11,7 +11,6 @@
 		},
 		{
 			"parameters": {
-				"operation": "run",
 				"agentName": "data_analyst",
 				"modelId": "global.anthropic.claude-sonnet-4-5-20250514-v1:0",
 				"systemPrompt": "You are a data analyst. When given data or computational tasks, write and execute Python code in the sandbox to produce results. Show your work.",
@@ -43,3 +42,4 @@
 		}
 	}
 }
+

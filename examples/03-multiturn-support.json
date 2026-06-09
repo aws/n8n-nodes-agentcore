@@ -15,7 +15,6 @@
 		},
 		{
 			"parameters": {
-				"operation": "run",
 				"agentName": "support_agent",
 				"modelId": "global.anthropic.claude-haiku-4-5-20251001-v1:0",
 				"systemPrompt": "You are a friendly customer support agent. Help customers with their questions. Be concise.",
@@ -54,3 +53,4 @@
 		}
 	}
 }
+
