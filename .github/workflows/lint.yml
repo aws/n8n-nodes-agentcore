@@ -17,14 +17,14 @@ jobs:
   setup:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 20.x
           cache: 'npm'
       - run: npm ci --ignore-scripts
       - name: Cache node_modules
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: node_modules
           key: node-modules-${{ hashFiles('package-lock.json') }}
@@ -33,11 +33,11 @@ jobs:
     needs: setup
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 20.x
-      - uses: actions/cache/restore@v4
+      - uses: actions/cache/restore@v5
         with:
           path: node_modules
           key: node-modules-${{ hashFiles('package-lock.json') }}
@@ -47,11 +47,11 @@ jobs:
     needs: setup
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 20.x
-      - uses: actions/cache/restore@v4
+      - uses: actions/cache/restore@v5
         with:
           path: node_modules
           key: node-modules-${{ hashFiles('package-lock.json') }}
@@ -61,11 +61,11 @@ jobs:
     needs: setup
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 20.x
-      - uses: actions/cache/restore@v4
+      - uses: actions/cache/restore@v5
         with:
           path: node_modules
           key: node-modules-${{ hashFiles('package-lock.json') }}
@@ -75,11 +75,11 @@ jobs:
     needs: setup
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 20.x
-      - uses: actions/cache/restore@v4
+      - uses: actions/cache/restore@v5
         with:
           path: node_modules
           key: node-modules-${{ hashFiles('package-lock.json') }}
@@ -91,13 +91,13 @@ jobs:
     needs: setup
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0  # secretlint scans history-aware paths
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 20.x
-      - uses: actions/cache/restore@v4
+      - uses: actions/cache/restore@v5
         with:
           path: node_modules
           key: node-modules-${{ hashFiles('package-lock.json') }}
@@ -106,7 +106,7 @@ jobs:
   no-eval:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       # Spec §9 says "Zero exec / spawn / eval / file-system writes". Enforce it in CI.
       # A grep is cheaper than ESLint rules here and catches additions outside lint scope.
       - name: Disallow eval/exec/spawn in source
