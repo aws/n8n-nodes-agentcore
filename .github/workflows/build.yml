@@ -55,7 +55,7 @@ jobs:
         if: matrix.node-version == '20.x'
         run: |
           set -e
-          TARBALL=$(ls n8n-nodes-agentcore-*.tgz | head -1)
+          TARBALL=$(ls *.tgz | head -1)
           echo "Inspecting $TARBALL"
           tar -tzf "$TARBALL" | tee /tmp/contents.txt
           # n8n manifest paths must be inside the tarball

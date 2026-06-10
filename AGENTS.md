@@ -10,7 +10,7 @@ authoritative for the conventions below.
 
 ## What this package is, and isn't
 
-- It is an n8n community node distributed on npm as `n8n-nodes-agentcore`.
+- It is an n8n community node distributed on npm as `@aws/n8n-nodes-agentcore`.
 - It targets the **AgentCore Harness** primitive (declarative spec),
   not AgentCore Runtime (the container-hosting primitive).
 - It is **not** a general-purpose Bedrock client. It only speaks the

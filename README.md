@@ -1,4 +1,4 @@
-# n8n-nodes-agentcore
+# @aws/n8n-nodes-agentcore
 
 An n8n community node for **Amazon Bedrock AgentCore Harness**. Run production-grade AI agents with isolated microVMs, real browsers, real code execution, and persistent memory — directly from your n8n workflows.
 
@@ -10,15 +10,15 @@ An n8n community node for **Amazon Bedrock AgentCore Harness**. Run production-g
 
 ## Why this node?
 
-n8n's native AI Agent node is great for simple agents, but hits walls fast: no cross-session memory, no real browser, no real code execution, and short execution timeouts. AgentCore Harness solves all four. This node is the bridge.
+n8n’s native AI Agent node is great for simple agents, but hits walls fast: no cross-session memory, no real browser, no real code execution, and short execution timeouts. AgentCore Harness solves all four. This node is the bridge.
 
-| Capability | Native n8n AI Agent | AgentCore Agent (this node) |
-| ---------- | ------------------- | --------------------------- |
-| Memory | Per-execution only | Cross-session, semantic, summary, episodic |
-| Code execution | Sandboxed JS only | Full microVM with Python/Node/etc. |
-| Browser | None | Cloud browser with real navigation |
-| Session length | Workflow timeout | Up to 8 hours per session |
-| Isolation | Shared process | Firecracker microVM per session |
+|Capability    |Native n8n AI Agent|AgentCore Agent (this node)               |
+|--------------|-------------------|------------------------------------------|
+|Memory        |Per-execution only |Cross-session, semantic, summary, episodic|
+|Code execution|Sandboxed JS only  |Full microVM with Python/Node/etc.        |
+|Browser       |None               |Cloud browser with real navigation        |
+|Session length|Workflow timeout   |Up to 8 hours per session                 |
+|Isolation     |Shared process     |Firecracker microVM per session           |
 
 ## Features
 
@@ -35,14 +35,14 @@ n8n's native AI Agent node is great for simple agents, but hits walls fast: no c
 
 1. Open n8n
 2. **Settings → Community Nodes → Install a community node**
-3. Enter `n8n-nodes-agentcore`
+3. Enter `@aws/n8n-nodes-agentcore`
 4. Accept the warning, click **Install**
 
 ### Manually
 
 ```bash
 cd ~/.n8n
-npm install n8n-nodes-agentcore
+npm install @aws/n8n-nodes-agentcore
 # restart n8n
 ```
 
@@ -58,7 +58,8 @@ You need:
 ### IAM setup
 
 **1. Caller permissions** — the IAM user or role whose access keys go into the
-n8n credential needs the actions listed in the [Required IAM permissions for
+n8n credential needs the actions listed in the 
+[Required IAM permissions for
 callers](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/harness-security.html#harness-iam-callers)
 table, scoped to your harness ARN(s).
 
@@ -94,13 +95,13 @@ single source of truth.
 
 In n8n, go to **Credentials → New → Amazon Bedrock AgentCore API** and fill in:
 
-| Field | Value |
-| ----- | ----- |
-| Access Key ID | From your IAM user |
-| Secret Access Key | From your IAM user |
-| Session Token | Optional. Only for temporary STS credentials. |
-| Region | The AgentCore-supported region you want to use |
-| Execution Role ARN | The role ARN from Step 1 |
+|Field             |Value                                         |
+|------------------|----------------------------------------------|
+|Access Key ID     |From your IAM user                            |
+|Secret Access Key |From your IAM user                            |
+|Session Token     |Optional. Only for temporary STS credentials. |
+|Region            |The AgentCore-supported region you want to use|
+|Execution Role ARN|The role ARN from Step 1                      |
 
 Save.
 
@@ -119,7 +120,7 @@ Type an Agent Name, set the system prompt and prompt, configure tools, and run. 
 
 ### Fill in Harness ARN — Invoke Existing
 
-For a harness deployed outside n8n (CLI, console, CloudFormation, Terraform). The node calls `InvokeHarness` directly (~3 seconds). Any config field you fill in — Model, System Prompt, Tools, Max Iterations / Tokens, Timeout, Actor ID — is sent as a **per-invocation override**; leave a field blank to use the harness's own configuration. The Agent Name, Memory ARN, and Force Recreate fields are hidden in this mode because they only apply when the node owns the harness lifecycle.
+For a harness deployed outside n8n (CLI, console, CloudFormation, Terraform). The node calls `InvokeHarness` directly (~3 seconds). Any config field you fill in — Model, System Prompt, Tools, Max Iterations / Tokens, Timeout, Actor ID — is sent as a **per-invocation override**; leave a field blank to use the harness’s own configuration. The Agent Name, Memory ARN, and Force Recreate fields are hidden in this mode because they only apply when the node owns the harness lifecycle.
 
 **Output shape** (the `operation` field reports the resolved mode, `run` or `invokeExisting`):
 
@@ -176,7 +177,7 @@ npm link
 mkdir -p ~/.n8n/custom
 cd ~/.n8n/custom
 npm init -y           # if package.json doesn't already exist
-npm link n8n-nodes-agentcore
+npm link @aws/n8n-nodes-agentcore
 ```
 
 ### Step 4 — Start n8n
@@ -208,52 +209,45 @@ You should see `research_agent-<10 char id>` in `READY` state.
 
 ## Publishing
 
-### Step 1 — Final checks
+Releases are cut through the **Release** GitHub Actions workflow
+(`.github/workflows/release.yml`), which publishes to npm via
+[trusted publishing](https://docs.npmjs.com/trusted-publishers) (OIDC, with
+provenance) behind a manual approval gate — no tokens.
 
-```bash
-npm run lint
-npm run build
-```
+### Cutting a release
 
-Make sure `dist/` contains `credentials/AgentCoreApi.credentials.js` and `nodes/AgentCoreHarness/AgentCoreHarness.node.js`.
+1. Ensure CI is green and `CHANGELOG.md` has an entry for the new version.
+2. **Actions → Release → Run workflow**, and pick the bump type (patch / minor / major / prerelease). The workflow bumps the version and opens a 3release/vX.Y.Z` pull request.
+4. Review and merge that release PR into `main`.
+5. Approve the `npm-publish` environment on the waiting run. The publish job then verifies the version on `main`, builds, publishes `@aws/n8n-nodes-agentcore` with provenance, tags `vX.Y.Z`, and creates the GitHub Release.
 
-### Step 2 — Bump version
+The package name `@aws/n8n-nodes-agentcore` matches n8n’s required
+`@scope/n8n-nodes-*` convention, so n8n’s community node scanner will discover it.
 
-```bash
-npm version patch    # 0.1.0 → 0.1.1
-# or
-npm version minor    # 0.1.0 → 0.2.0
-```
+> **First publish only:** trusted publishing can’t create a package that doesn’t
+> exist yet, so the initial `0.1.0` is published manually with a token. Every
+> release after that uses the workflow above.
 
-### Step 3 — Publish to npm
-
-```bash
-npm login            # if not already logged in
-npm publish --access public
-```
-
-The package name `n8n-nodes-agentcore` matches n8n's required `n8n-nodes-*` convention, so n8n's community node scanner will discover it.
-
-### Step 4 — Submit to n8n community nodes registry
+### Submit to the n8n community nodes registry
 
 1. Fork [`n8n-io/n8n-docs`](https://github.com/n8n-io/n8n-docs)
 2. Add an entry in `docs/integrations/community-nodes/installation/`
 3. Open a pull request referencing the npm package
 
-### Step 5 — Announce
+### Announce
 
 - Post in the n8n community forum under **Show and Tell**
 - Link to the GitHub repo, the npm package, and one of the example workflows
 
 ## Roadmap
 
-| Version | Capability |
-| ------- | ---------- |
-| **v0.1** (current) | Run Agent, Invoke Existing, MCP / Browser / Code Interpreter / Gateway tools, streaming, sessions |
-| **v0.2** | n8n nodes as harness tools (inline functions). Sub-node-style tool wiring. |
-| **v0.3** | Memory auto-provisioning. Today, BYO Memory ARN only. |
-| **v0.4** | Custom container support (BYO Docker image) |
-| **v0.5** | One-click CloudFormation quick-create for the IAM execution role |
+|Version           |Capability                                                                                       |
+|------------------|-------------------------------------------------------------------------------------------------|
+|**v0.1** (current)|Run Agent, Invoke Existing, MCP / Browser / Code Interpreter / Gateway tools, streaming, sessions|
+|**v0.2**          |n8n nodes as harness tools (inline functions). Sub-node-style tool wiring.                       |
+|**v0.3**          |Memory auto-provisioning. Today, BYO Memory ARN only.                                            |
+|**v0.4**          |Custom container support (BYO Docker image)                                                      |
+|**v0.5**          |One-click CloudFormation quick-create for the IAM execution role                                 |
 
 ## Limitations (v0.1)
 
@@ -286,4 +280,3 @@ endorsement.
 ## License
 
 Apache-2.0
-

@@ -16,7 +16,7 @@
 		{
 			"parameters": {
 				"agentName": "support_agent",
-				"modelId": "global.anthropic.claude-haiku-4-5-20251001-v1:0",
+				"modelId": "global.anthropic.claude-opus-4-8",
 				"systemPrompt": "You are a friendly customer support agent. Help customers with their questions. Be concise.",
 				"prompt": "={{ $json.body.message }}",
 				"sessionId": "={{ $json.body.customerId + '-session-' + $json.body.threadId }}",
@@ -28,7 +28,7 @@
 			},
 			"id": "2",
 			"name": "Support Agent",
-			"type": "n8n-nodes-agentcore.agentCoreHarness",
+			"type": "@aws/n8n-nodes-agentcore.agentCoreHarness",
 			"typeVersion": 1,
 			"position": [480, 300],
 			"credentials": { "agentCoreApi": { "id": "1", "name": "AgentCore creds" } }

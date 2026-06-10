@@ -100,7 +100,7 @@ jobs:
     # The environment is the manual-approval gate.
     environment:
       name: npm-publish
-      url: https://www.npmjs.com/package/n8n-nodes-agentcore
+      url: https://www.npmjs.com/package/@aws/n8n-nodes-agentcore
     permissions:
       contents: write   # tag + release
       id-token: write   # OIDC for npm trusted publishing
