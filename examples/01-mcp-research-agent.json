@@ -12,7 +12,7 @@
 		{
 			"parameters": {
 				"agentName": "research_agent",
-				"modelId": "global.anthropic.claude-haiku-4-5-20251001-v1:0",
+				"modelId": "global.anthropic.claude-opus-4-8",
 				"systemPrompt": "You are a research assistant. Use the Exa search tool to find up-to-date information when answering questions. Cite your sources.",
 				"prompt": "Find 3 recent breakthroughs in quantum computing this year and summarize each in 2 sentences.",
 				"tools": {
@@ -31,7 +31,7 @@
 			},
 			"id": "2",
 			"name": "Research Agent",
-			"type": "n8n-nodes-agentcore.agentCoreHarness",
+			"type": "@aws/n8n-nodes-agentcore.agentCoreHarness",
 			"typeVersion": 1,
 			"position": [480, 300],
 			"credentials": { "agentCoreApi": { "id": "1", "name": "AgentCore creds" } }
