@@ -119,11 +119,11 @@ A single operation. The **Harness ARN** field is the mode discriminator: blank �
 **Run Agent lifecycle (ARN blank):**
 
 1. Compute config hash from current field values
-1. Look up existing harness in workflow static data
-1. If absent, query AWS via `ListHarnesses` to find one matching the agent name (handles workflow imports, n8n restarts, lost local state)
-1. If found: reuse if config hash matches; `UpdateHarness` if hash differs
-1. If not found: `CreateHarness`, poll `GetHarness` until READY (~30s)
-1. `InvokeHarness` with streaming, accumulate response
+2. Look up existing harness in workflow static data
+3. If absent, query AWS via `ListHarnesses` to find one matching the agent name (handles workflow imports, n8n restarts, lost local state)
+4. If found: reuse if config hash matches; `UpdateHarness` if hash differs
+5. If not found: `CreateHarness`, poll `GetHarness` until READY (~30s)
+6. `InvokeHarness` with streaming, accumulate response
 
 ### Credential — `AgentCoreApi`
 
@@ -234,15 +234,15 @@ Local-only testing uses Verdaccio (private npm registry in Docker). See `docs/lo
 ### Smoke tests (manual, per release)
 
 1. Create credential, save successfully
-1. Blank Harness ARN, no tools — completes, returns response, harness in `READY`
-1. Re-run same workflow — fast (~2s), same harness ID
-1. Modify system prompt, re-run — slower (~10–15s), same harness ID, response reflects update
-1. Multi-turn with shared session ID — second node references first prompt
-1. Run Agent with MCP tool — agent uses tool, response cites tool output
-1. Run Agent with Code Interpreter — agent runs code, returns result
-1. Run Agent with Browser — agent navigates, returns content
-1. Populated Harness ARN (paste-in) — invokes without auto-provision; filled config fields apply as per-invocation overrides
-1. Force Recreate (blank Harness ARN) — deletes and recreates with new ARN
+2. Blank Harness ARN, no tools — completes, returns response, harness in `READY`
+3. Re-run same workflow — fast (~2s), same harness ID
+4. Modify system prompt, re-run — slower (~10–15s), same harness ID, response reflects update
+5. Multi-turn with shared session ID — second node references first prompt
+6. Run Agent with MCP tool — agent uses tool, response cites tool output
+7. Run Agent with Code Interpreter — agent runs code, returns result
+8. Run Agent with Browser — agent navigates, returns content
+9. Populated Harness ARN (paste-in) — invokes without auto-provision; filled config fields apply as per-invocation overrides
+10. Force Recreate (blank Harness ARN) — deletes and recreates with new ARN
 
 ### Automated tests
 

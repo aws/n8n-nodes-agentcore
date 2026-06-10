@@ -34,9 +34,9 @@ n8n’s native AI Agent node is great for simple agents, but hits walls fast: no
 ### Via n8n UI (recommended)
 
 1. Open n8n
-1. **Settings → Community Nodes → Install a community node**
-1. Enter `@aws/n8n-nodes-agentcore`
-1. Accept the warning, click **Install**
+2. **Settings → Community Nodes → Install a community node**
+3. Enter `@aws/n8n-nodes-agentcore`
+4. Accept the warning, click **Install**
 
 ### Manually
 
@@ -51,9 +51,9 @@ npm install @aws/n8n-nodes-agentcore
 You need:
 
 1. **An AWS account** with Amazon Bedrock and AgentCore access in a supported region (us-east-1, us-west-2, ap-southeast-2, eu-central-1)
-1. **AWS credentials** (access key + secret key) with the IAM policy below attached
-1. **An IAM execution role** that the harness assumes when running, with a trust policy and permissions described below
-1. **An enabled foundation model** in the Amazon Bedrock console (Claude Haiku, Sonnet, etc.)
+2. **AWS credentials** (access key + secret key) with the IAM policy below attached
+3. **An IAM execution role** that the harness assumes when running, with a trust policy and permissions described below
+4. **An enabled foundation model** in the Amazon Bedrock console (Claude Haiku, Sonnet, etc.)
 
 ### IAM setup
 
@@ -144,8 +144,8 @@ For a harness deployed outside n8n (CLI, console, CloudFormation, Terraform). Th
 The `examples/` folder has three importable workflows:
 
 1. **`01-mcp-research-agent.json`** — Research agent using Exa search (remote MCP)
-1. **`02-code-interpreter.json`** — Data analyst agent that writes and runs Python
-1. **`03-multiturn-support.json`** — Webhook-triggered support agent with session persistence
+2. **`02-code-interpreter.json`** — Data analyst agent that writes and runs Python
+3. **`03-multiturn-support.json`** — Webhook-triggered support agent with session persistence
 
 Import any of them via **Workflows → Import from File** in n8n.
 
@@ -191,9 +191,9 @@ Open `http://localhost:5678`. The **Amazon Bedrock AgentCore** node should appea
 ### Step 5 — Configure credentials and run an example
 
 1. Add an **Amazon Bedrock AgentCore API** credential with your IAM access keys, region, and execution role ARN
-1. **Workflows → Import from File** → select `examples/01-mcp-research-agent.json`
-1. Attach the credential to the agent node
-1. Click **Execute Workflow**
+2. **Workflows → Import from File** → select `examples/01-mcp-research-agent.json`
+3. Attach the credential to the agent node
+4. Click **Execute Workflow**
 
 First run takes ~30 seconds (harness creation). Subsequent runs are instant.
 
@@ -217,9 +217,9 @@ provenance) behind a manual approval gate — no tokens.
 ### Cutting a release
 
 1. Ensure CI is green and `CHANGELOG.md` has an entry for the new version.
-1. **Actions → Release → Run workflow**, and pick the bump type (patch / minor / major / prerelease). The workflow bumps the version and opens a `release/vX.Y.Z` pull request.
-1. Review and merge that release PR into `main`.
-1. Approve the `npm-publish` environment on the waiting run. The publish job then verifies the version on `main`, builds, publishes `@aws/n8n-nodes-agentcore` with provenance, tags `vX.Y.Z`, and creates the GitHub Release.
+2. **Actions → Release → Run workflow**, and pick the bump type (patch / minor / major / prerelease). The workflow bumps the version and opens a 3release/vX.Y.Z` pull request.
+4. Review and merge that release PR into `main`.
+5. Approve the `npm-publish` environment on the waiting run. The publish job then verifies the version on `main`, builds, publishes `@aws/n8n-nodes-agentcore` with provenance, tags `vX.Y.Z`, and creates the GitHub Release.
 
 The package name `@aws/n8n-nodes-agentcore` matches n8n’s required
 `@scope/n8n-nodes-*` convention, so n8n’s community node scanner will discover it.
@@ -231,8 +231,8 @@ The package name `@aws/n8n-nodes-agentcore` matches n8n’s required
 ### Submit to the n8n community nodes registry
 
 1. Fork [`n8n-io/n8n-docs`](https://github.com/n8n-io/n8n-docs)
-1. Add an entry in `docs/integrations/community-nodes/installation/`
-1. Open a pull request referencing the npm package
+2. Add an entry in `docs/integrations/community-nodes/installation/`
+3. Open a pull request referencing the npm package
 
 ### Announce
 
