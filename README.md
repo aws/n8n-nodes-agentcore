@@ -33,6 +33,11 @@ n8n’s native AI Agent node is great for simple agents, but hits walls fast: no
 - **Session persistence** — pass the same session ID across executions for multi-turn conversations
 - **Execution limits** — max iterations, max tokens, timeout
 
+## Quick start
+
+New here? **[docs/QUICKSTART.md](./docs/QUICKSTART.md)** takes you from install to
+a working agent reply in ~5 minutes (install → credential → one prompt → multi-turn).
+
 ## Installation
 
 ### Via n8n UI (recommended)
@@ -170,12 +175,30 @@ Bedrock provider and set API Format to `Responses` or `Chat Completions` with a
 Mantle model id (e.g. `openai.gpt-4o`). You can switch providers between turns of
 one session and the conversation continues.
 
-### Memory
+### Memory & sessions
 
 **Memory Mode** (Provisioning Options) chooses **Managed** (auto-provision, the
 default — configurable strategies and event expiry), **Bring Your Own ARN**, or
 **Disabled**. A populated **Memory ARN** is always treated as BYO so v0.1
 workflows are unaffected.
+
+Three related-but-distinct controls govern what the agent remembers — getting
+these straight prevents the most common "it didn't remember" confusion:
+
+- **Session ID** = *continuity of one conversation.* Reuse the same value across
+  runs to continue a conversation; a new/blank value starts a fresh one. **Left
+  blank, every run gets a new random session** and the agent won't recall prior
+  turns — the output's `sessionSource` field reports `generated` (new) vs
+  `provided` (continuing). For multi-turn, set a stable Session ID (e.g. bound to
+  a user/thread id via an expression).
+- **Memory Mode** = *whether anything is persisted/recalled at all.* Managed or
+  BYO = on; Disabled = stateless. This is the on/off switch.
+- **Actor ID** (Additional Options) = *whose memory, within enabled memory.*
+  Memory is scoped by `actorId + sessionId`, so different actors on the same
+  agent get isolated histories. It has no effect when memory is Disabled.
+
+So: short-term continuity needs a stable **Session ID**; long-term recall needs
+**Memory Mode** on; per-user isolation needs an **Actor ID**.
 
 ### Tools & skills
 
@@ -388,6 +411,20 @@ The package name `@aws/n8n-nodes-agentcore` matches n8n’s required
   harness; the old one remains in your account until manually deleted.
 - **Inline functions are stateless across calls.** The tool-result round-trip is
   a two-node pattern (Tool Results field), not an in-node interactive pause.
+
+## Troubleshooting
+
+| Symptom | Likely cause & fix |
+|---|---|
+| **The agent doesn't remember previous turns** | The **Session ID** was left blank, so each run is a new conversation (output shows `sessionSource: "generated"`). Set a stable Session ID and reuse it across runs. See [Memory & sessions](#memory--sessions). |
+| **`AccessDenied` / `not authorized to perform` on the first run** | Either the **Bedrock model isn't enabled** (Bedrock console → Model access), or the **execution role is missing a scoped action** for the feature you used (e.g. `bedrock-mantle:CreateInference` for Mantle models, token-vault read for OpenAI/Gemini keys, `InvokeGateway` for gateways). See [IAM setup](#iam-setup). |
+| **First run hangs for ~30 seconds** | Expected — the node is creating the harness on first use. Subsequent runs reuse it and return in a few seconds. |
+| **VPC harness fails / sessions time out on start** | The harness pulls its container from `public.ecr.aws`, which has no VPC endpoint. The subnet you configured must route `0.0.0.0/0` to a **NAT gateway** (→ internet gateway). Fix the route table or use a NAT-routed subnet. |
+| **OpenAI / Gemini model errors about a missing key** | Direct OpenAI/Gemini require an **API Key ARN** (a token-vault credential provider) in Model Options. To use OpenAI-style models without a key, pick the **Bedrock** provider with API Format `Responses`/`Chat Completions` and a Mantle model id. |
+| **Two "Amazon Bedrock AgentCore" nodes in the palette** | A leftover/older install. Remove the stale package from `~/.n8n/nodes` (or `~/.n8n/custom`), then fully restart n8n and open a fresh browser tab. |
+| **OAuth invoke returns 401 / Unauthorized** | The harness needs an **inbound JWT authorizer** configured, and the Bearer Token must be a valid, unexpired JWT from that IdP whose `aud`/`client_id`/scopes satisfy the authorizer. See [OAuth Bearer invoke](#oauth-bearer-invoke). |
+| **Changed config but the agent behaves the same** | The node updates the harness only when the config hash changes. Confirm the field actually changed; the output `harness.version` increments on each update. |
+| **Node not in the palette after install** | Fully restart the n8n process (not just reload the browser) and open a fresh/incognito tab — n8n caches the node palette and icons. |
 
 ## Getting help and contributing
 
