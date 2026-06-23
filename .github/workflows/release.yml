@@ -37,7 +37,7 @@ jobs:
       dist_tag: ${{ steps.bump.outputs.dist_tag }}
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -107,7 +107,7 @@ jobs:
 
     steps:
       - name: Checkout main (post-merge)
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: main
           fetch-depth: 0
