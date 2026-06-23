@@ -223,9 +223,12 @@ own the token, follow these practices:
   an upstream auth step (e.g. a Cognito/OIDC login node) rather than pasting a
   long-lived token into the field. Configure a short token TTL at the IdP so a
   leaked token has a small exposure window.
-- **Constrain the authorizer.** Configure the harness's inbound JWT authorizer
-  to validate allowed audiences, allowed client IDs, and required scopes, so only
-  tokens minted for this harness are accepted. See
+- **Constrain the authorizer.** The inbound JWT authorizer is IdP-agnostic and
+  validates tokens against the discovery URL plus any of: allowed **audiences**
+  (`aud`), allowed **clients** (`client_id`), allowed **scopes**, and required
+  **custom claims** (e.g. `group == Developer`). At least one of these must be
+  configured, and if you set several the authorizer enforces all of them — so
+  scope it tightly so only tokens minted for this harness are accepted. See
   [inbound JWT authorizer](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/inbound-jwt-authorizer.html).
 - **Plan for revocation and rotation.** Revoke at the IdP (rotate signing keys,
   revoke the session/refresh token, or disable the client) if a token is
