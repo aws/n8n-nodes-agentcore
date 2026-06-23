@@ -1,0 +1,61 @@
+{
+	"name": "AgentCore — Multi-Provider Model Switch",
+	"nodes": [
+		{
+			"parameters": {},
+			"id": "1",
+			"name": "Manual Trigger",
+			"type": "n8n-nodes-base.manualTrigger",
+			"typeVersion": 1,
+			"position": [240, 300]
+		},
+		{
+			"parameters": {
+				"agentName": "switch_agent",
+				"modelProvider": "bedrock",
+				"modelId": "global.anthropic.claude-sonnet-4-6",
+				"systemPrompt": "You are a senior code reviewer. Be precise.",
+				"prompt": "Analyze this codebase and identify the top performance bottleneck.",
+				"sessionId": "={{ $execution.id }}-switch",
+				"additionalOptions": {
+					"timeoutSeconds": 300
+				}
+			},
+			"id": "2",
+			"name": "Turn 1 - Bedrock",
+			"type": "@aws/n8n-nodes-agentcore.agentCoreHarness",
+			"typeVersion": 1,
+			"position": [480, 300],
+			"credentials": { "agentCoreApi": { "id": "1", "name": "AgentCore creds" } }
+		},
+		{
+			"parameters": {
+				"agentName": "switch_agent",
+				"modelProvider": "litellm",
+				"modelId": "gemini/gemini-2.5-pro",
+				"modelOptions": {
+					"apiKeyArn": "arn:aws:bedrock-agentcore:us-west-2:123456789012:token-vault/default/apikeycredentialprovider/my-gemini-key"
+				},
+				"prompt": "Now suggest concrete fixes for that bottleneck.",
+				"sessionId": "={{ $execution.id }}-switch",
+				"additionalOptions": {
+					"timeoutSeconds": 300
+				}
+			},
+			"id": "3",
+			"name": "Turn 2 - Gemini via LiteLLM",
+			"type": "@aws/n8n-nodes-agentcore.agentCoreHarness",
+			"typeVersion": 1,
+			"position": [760, 300],
+			"credentials": { "agentCoreApi": { "id": "1", "name": "AgentCore creds" } }
+		}
+	],
+	"connections": {
+		"Manual Trigger": {
+			"main": [[{ "node": "Turn 1 - Bedrock", "type": "main", "index": 0 }]]
+		},
+		"Turn 1 - Bedrock": {
+			"main": [[{ "node": "Turn 2 - Gemini via LiteLLM", "type": "main", "index": 0 }]]
+		}
+	}
+}

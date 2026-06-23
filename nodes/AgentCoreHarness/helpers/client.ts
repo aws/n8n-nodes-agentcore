@@ -25,6 +25,36 @@ export function getExecutionRoleArn(creds: ICredentialDataDecryptedObject): stri
 	return (creds.executionRoleArn as string) || '';
 }
 
+export interface CredentialVpcConfig {
+	networkMode: 'PUBLIC' | 'VPC';
+	subnets: string[];
+	securityGroups: string[];
+}
+
+/**
+ * Reads the VPC fields off the credential. Returns undefined when network mode
+ * is Public (the default), so the caller omits networkConfiguration entirely.
+ */
+export function getVpcConfig(
+	creds: ICredentialDataDecryptedObject,
+): CredentialVpcConfig | undefined {
+	const networkMode = (creds.networkMode as string) === 'VPC' ? 'VPC' : 'PUBLIC';
+	if (networkMode !== 'VPC') return undefined;
+	return {
+		networkMode: 'VPC',
+		subnets: splitList(creds.subnetIds as string | undefined),
+		securityGroups: splitList(creds.securityGroupIds as string | undefined),
+	};
+}
+
+function splitList(raw: string | undefined): string[] {
+	if (!raw) return [];
+	return raw
+		.split(',')
+		.map((s) => s.trim())
+		.filter(Boolean);
+}
+
 /**
  * Polls GetHarness until READY or a terminal failure state.
  * Default timeout 180 seconds matches typical harness creation time.

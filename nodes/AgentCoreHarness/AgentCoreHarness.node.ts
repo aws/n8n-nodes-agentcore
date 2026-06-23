@@ -20,10 +20,26 @@ import { createHash, randomUUID } from 'crypto';
 
 import { harnessFields } from './descriptions/HarnessFields';
 import { buildToolsArray, configHash, type ToolConfig } from './helpers/tools';
+import { buildModelConfig, type ModelProvider } from './helpers/model';
+import { buildMemoryConfig, buildMemoryUpdate, type MemoryMode } from './helpers/memory';
+import {
+	buildEnvironment,
+	buildEnvironmentArtifact,
+	buildEnvironmentArtifactUpdate,
+	type FilesystemMount,
+} from './helpers/environment';
+import { buildSkillsArray } from './helpers/skills';
+import { invokeWithBearer } from './helpers/oauth';
+import {
+	listHarnessVersions,
+	listHarnessEndpoints,
+	upsertHarnessEndpoint,
+} from './helpers/versioning';
 import {
 	getAwsCredentials,
 	getExecutionRoleArn,
 	getRegion,
+	getVpcConfig,
 	waitForHarnessReady,
 } from './helpers/client';
 import { consumeStream } from './helpers/stream';
@@ -46,8 +62,23 @@ interface NodeStaticData {
 // Run-mode fallbacks. The merged field set defaults model/system prompt to
 // empty so that, in ARN/invoke mode, a blank field sends no override. Run mode
 // applies these defaults in code instead, preserving the prior behavior.
-const DEFAULT_MODEL_ID = 'global.anthropic.claude-haiku-4-5-20251001-v1:0';
+// v0.2: the service default model is Claude Sonnet 4.6 on Bedrock.
+const DEFAULT_MODEL_ID = 'global.anthropic.claude-sonnet-4-6';
 const DEFAULT_SYSTEM_PROMPT = 'You are a helpful AI assistant.';
+
+/** Bundle of the model/config field values shared by run + invoke paths. */
+interface ResolvedConfig {
+	modelConfig?: IDataObject;
+	systemPrompt: string;
+	tools: ToolConfig[];
+	skills: IDataObject[];
+	maxIterations?: number;
+	maxTokens?: number;
+	timeoutSeconds?: number;
+	actorId: string;
+	qualifier: string;
+	runtimeUserId: string;
+}
 
 export class AgentCoreHarness implements INodeType {
 	description: INodeTypeDescription = {
@@ -57,7 +88,7 @@ export class AgentCoreHarness implements INodeType {
 		group: ['transform'],
 		version: 1,
 		subtitle:
-			'={{ $parameter["harnessArn"] ? "Invoke Existing Harness" : ("Run Agent" + ($parameter["agentName"] ? ": " + $parameter["agentName"] : "")) }}',
+			'={{ $parameter["harnessArn"] ? "Invoke Existing harness" : ("Run Agent" + ($parameter["agentName"] ? ": " + $parameter["agentName"] : "")) }}',
 		description:
 			'Run AI agents on Amazon Bedrock AgentCore harness. Auto-provisions and reuses harnesses across executions.',
 		defaults: {
@@ -157,12 +188,21 @@ export class AgentCoreHarness implements INodeType {
 
 				let result: IDataObject;
 				if (harnessArn) {
-					result = await invokeExisting(this, itemIndex, dataClient, InvokeHarnessCommand);
+					result = await invokeExisting(
+						this,
+						itemIndex,
+						region,
+						controlClient,
+						dataClient,
+						InvokeHarnessCommand,
+						GetHarnessCommand,
+					);
 				} else {
 					result = await runAgent(
 						this,
 						itemIndex,
 						creds,
+						region,
 						controlClient,
 						dataClient,
 						{
@@ -203,13 +243,56 @@ interface SdkCommands {
 }
 
 /**
+ * Reads the model / tools / skills / limits fields shared by run and invoke.
+ * `applyDefaults` substitutes the run-mode model/system-prompt fallbacks; in
+ * invoke mode a blank field stays blank so no override is sent.
+ */
+function resolveConfig(
+	ctx: IExecuteFunctions,
+	itemIndex: number,
+	applyDefaults: boolean,
+): ResolvedConfig {
+	const provider = ctx.getNodeParameter('modelProvider', itemIndex, 'bedrock') as ModelProvider;
+	const modelIdRaw = (ctx.getNodeParameter('modelId', itemIndex, '') as string).trim();
+	const modelId = applyDefaults && !modelIdRaw ? DEFAULT_MODEL_ID : modelIdRaw;
+	const modelOptions = ctx.getNodeParameter('modelOptions', itemIndex, {}) as IDataObject;
+	const modelConfig = buildModelConfig({ provider, modelId, options: modelOptions });
+
+	const systemPromptRaw = ctx.getNodeParameter('systemPrompt', itemIndex, '') as string;
+	const systemPrompt =
+		applyDefaults && !systemPromptRaw.trim() ? DEFAULT_SYSTEM_PROMPT : systemPromptRaw;
+
+	const toolsUi = ctx.getNodeParameter('tools', itemIndex, {}) as IDataObject;
+	const tools = buildToolsArray(toolsUi);
+
+	const skillsUi = ctx.getNodeParameter('skills', itemIndex, {}) as IDataObject;
+	const skills = buildSkillsArray(skillsUi);
+
+	const additional = ctx.getNodeParameter('additionalOptions', itemIndex, {}) as IDataObject;
+
+	return {
+		modelConfig,
+		systemPrompt,
+		tools,
+		skills,
+		maxIterations: additional.maxIterations as number | undefined,
+		maxTokens: additional.maxTokens as number | undefined,
+		timeoutSeconds: additional.timeoutSeconds as number | undefined,
+		actorId: (additional.actorId as string) || '',
+		qualifier: ((additional.qualifier as string) || '').trim(),
+		runtimeUserId: ((additional.runtimeUserId as string) || '').trim(),
+	};
+}
+
+/**
  * "Run Agent" operation. Creates the harness on first run, reuses it on
  * subsequent runs, updates it when the configuration drifts.
  */
 async function runAgent(
 	ctx: IExecuteFunctions,
 	itemIndex: number,
-	creds: any,
+	creds: ICredentialDataDecryptedObject,
+	region: string,
 	controlClient: any,
 	dataClient: any,
 	commands: SdkCommands,
@@ -218,26 +301,29 @@ async function runAgent(
 	const agentName = ctx.getNodeParameter('agentName', itemIndex) as string;
 	validateAgentName(agentName);
 
-	// Model and system prompt default to empty at the field level (so invoke mode
-	// sends no override when blank); run mode applies the in-code fallbacks here.
-	const modelId =
-		(ctx.getNodeParameter('modelId', itemIndex, '') as string).trim() || DEFAULT_MODEL_ID;
-	const systemPromptRaw = ctx.getNodeParameter('systemPrompt', itemIndex, '') as string;
-	const systemPrompt = systemPromptRaw.trim() ? systemPromptRaw : DEFAULT_SYSTEM_PROMPT;
-	const prompt = ctx.getNodeParameter('prompt', itemIndex) as string;
-	const toolsUi = ctx.getNodeParameter('tools', itemIndex, {}) as IDataObject;
-	const additional = ctx.getNodeParameter('additionalOptions', itemIndex, {}) as IDataObject;
-	// memoryArn and forceRecreate live in the run-only "Provisioning Options"
-	// collection (hidden when a Harness ARN is provided).
+	const cfg = resolveConfig(ctx, itemIndex, true);
+	const prompt = ctx.getNodeParameter('prompt', itemIndex, '') as string;
 	const provisioning = ctx.getNodeParameter('provisioningOptions', itemIndex, {}) as IDataObject;
 
-	const tools = buildToolsArray(toolsUi);
-	const maxIterations = additional.maxIterations as number | undefined;
-	const maxTokens = additional.maxTokens as number | undefined;
-	const timeoutSeconds = additional.timeoutSeconds as number | undefined;
-	const actorId = (additional.actorId as string) || '';
+	const memoryMode = (provisioning.memoryMode as MemoryMode) || 'managed';
 	const memoryArn = (provisioning.memoryArn as string) || '';
+	const memoryStrategies = (provisioning.memoryStrategies as string[]) || undefined;
+	const eventExpiryDuration = provisioning.eventExpiryDuration as number | undefined;
+	const containerUri = (provisioning.containerUri as string) || '';
 	const forceRecreate = (provisioning.forceRecreate as boolean) || false;
+	const mounts = parseFilesystemMounts(provisioning.filesystemMounts as IDataObject);
+
+	const memoryConfig = buildMemoryConfig({
+		mode: memoryMode,
+		memoryArn,
+		strategies: memoryStrategies,
+		eventExpiryDuration,
+		actorId: cfg.actorId,
+	});
+
+	const vpc = getVpcConfig(creds);
+	const environment = buildEnvironment({ vpc, mounts });
+	const environmentArtifact = buildEnvironmentArtifact(containerUri);
 
 	const executionRoleArn = getExecutionRoleArn(creds);
 	if (!executionRoleArn) {
@@ -250,12 +336,16 @@ async function runAgent(
 	validateExecutionRoleArn(executionRoleArn);
 
 	const desiredHash = configHash({
-		modelId,
-		systemPrompt,
-		tools,
-		maxIterations,
-		maxTokens,
-		timeoutSeconds,
+		model: cfg.modelConfig,
+		systemPrompt: cfg.systemPrompt,
+		tools: cfg.tools,
+		skills: cfg.skills.length > 0 ? cfg.skills : undefined,
+		memory: memoryConfig,
+		environment,
+		environmentArtifact,
+		maxIterations: cfg.maxIterations,
+		maxTokens: cfg.maxTokens,
+		timeoutSeconds: cfg.timeoutSeconds,
 	});
 
 	// Resolve harness: existing match, drift-update, or create.
@@ -264,6 +354,8 @@ async function runAgent(
 	if (forceRecreate) {
 		// Tear down our local cache and try to delete the remote harness so
 		// CreateHarness won't collide on the unique-name constraint.
+		// deleteManagedMemory=false disassociates managed memory instead of
+		// cascade-deleting it (TODO(v0.2-question-2)) — avoids silent data loss.
 		delete staticData.harnesses![agentName];
 		record = undefined as any;
 
@@ -271,7 +363,12 @@ async function runAgent(
 		if (existing) {
 			const { DeleteHarnessCommand } = await import('@aws-sdk/client-bedrock-agentcore-control');
 			try {
-				await controlClient.send(new DeleteHarnessCommand({ harnessId: existing.harnessId }));
+				await controlClient.send(
+					new DeleteHarnessCommand({
+						harnessId: existing.harnessId,
+						deleteManagedMemory: false,
+					}),
+				);
 			} catch {
 				// best-effort; fall through to create and let AWS surface any real error
 			}
@@ -286,10 +383,7 @@ async function runAgent(
 		if (existing) {
 			if (existing.status === 'READY') {
 				// Adopt the live harness. We don't know its stored config hash,
-				// so we force a drift check by setting configHash to empty. That
-				// triggers UpdateHarness below if desiredHash != '', which is
-				// always true. This is the correct behavior when adopting a
-				// harness that may have been created outside this node.
+				// so we force a drift check by setting configHash to empty.
 				record = {
 					harnessId: existing.harnessId,
 					arn: existing.arn,
@@ -304,7 +398,7 @@ async function runAgent(
 				throw new NodeOperationError(
 					ctx.getNode(),
 					`Harness "${existing.harnessId}" for agent "${agentName}" is in terminal state ${existing.status}. ` +
-						`Enable "Force Recreate" in Additional Options, or delete the harness manually with: ` +
+						`Enable "Force Recreate" in Provisioning Options, or delete the harness manually with: ` +
 						`aws bedrock-agentcore-control delete-harness --harness-id ${existing.harnessId}`,
 					{ itemIndex },
 				);
@@ -328,20 +422,34 @@ async function runAgent(
 		}
 	}
 
+	const provisionInput: ProvisionInput = {
+		modelConfig: cfg.modelConfig,
+		systemPrompt: cfg.systemPrompt,
+		tools: cfg.tools,
+		skills: cfg.skills,
+		memoryConfig,
+		memoryUpdate: buildMemoryUpdate({
+			mode: memoryMode,
+			memoryArn,
+			strategies: memoryStrategies,
+			eventExpiryDuration,
+			actorId: cfg.actorId,
+		}),
+		environment,
+		environmentArtifact,
+		environmentArtifactUpdate: buildEnvironmentArtifactUpdate(containerUri),
+		maxIterations: cfg.maxIterations,
+		maxTokens: cfg.maxTokens,
+		timeoutSeconds: cfg.timeoutSeconds,
+	};
+
 	if (!record) {
 		record = await createHarness(
 			controlClient,
 			commands.CreateHarnessCommand,
 			agentName,
 			executionRoleArn,
-			modelId,
-			systemPrompt,
-			tools,
-			maxIterations,
-			maxTokens,
-			timeoutSeconds,
-			memoryArn,
-			actorId,
+			provisionInput,
 			desiredHash,
 		);
 		staticData.harnesses![agentName] = record;
@@ -351,41 +459,51 @@ async function runAgent(
 			commands.UpdateHarnessCommand,
 			record.harnessId,
 			record.arn,
-			modelId,
-			systemPrompt,
-			tools,
-			maxIterations,
-			maxTokens,
-			timeoutSeconds,
-			memoryArn,
-			actorId,
+			provisionInput,
 			desiredHash,
 		);
 		staticData.harnesses![agentName] = record;
 	}
 
-	const sessionId = resolveSessionId(ctx.getNodeParameter('sessionId', itemIndex, '') as string);
+	// Opt-in version/endpoint management (TODO(v0.2-question-9)).
+	const versionEndpointOutput = await manageVersionsAndEndpoints(
+		controlClient,
+		record.harnessId,
+		provisioning,
+	);
+
+	// Summarize what was actually provisioned (memory ARN, model, version, …) so
+	// the user can see it in the node output instead of guessing.
+	const harnessSummary = await getHarnessSummary(
+		controlClient,
+		commands.GetHarnessCommand,
+		record.harnessId,
+	);
+
+	const sessionInput = (ctx.getNodeParameter('sessionId', itemIndex, '') as string).trim();
+	const sessionId = resolveSessionId(sessionInput);
+	const messages = buildMessages(ctx, itemIndex, prompt);
 
 	const invokePayload = buildInvokePayload({
 		harnessArn: record.arn,
 		runtimeSessionId: sessionId,
-		prompt,
-		modelId,
-		memoryArn,
-		actorId,
-		maxIterations,
-		maxTokens,
-		timeoutSeconds,
+		messages,
+		modelConfig: cfg.modelConfig,
+		skills: cfg.skills,
+		actorId: cfg.actorId,
+		qualifier: cfg.qualifier,
+		maxIterations: cfg.maxIterations,
+		maxTokens: cfg.maxTokens,
+		timeoutSeconds: cfg.timeoutSeconds,
 	});
 
-	const response = await dataClient.send(new commands.InvokeHarnessCommand(invokePayload));
-	const stream = (response as any).stream;
-	if (!stream) {
-		throw new NodeOperationError(ctx.getNode(), 'InvokeHarness returned no stream', {
-			itemIndex,
-		});
-	}
-	const result = await consumeStream(stream);
+	const result = await invoke(ctx, itemIndex, region, dataClient, commands.InvokeHarnessCommand, {
+		harnessArn: record.arn,
+		runtimeSessionId: sessionId,
+		runtimeUserId: cfg.runtimeUserId,
+		qualifier: cfg.qualifier,
+		payload: invokePayload,
+	});
 
 	return {
 		operation: 'run',
@@ -393,11 +511,19 @@ async function runAgent(
 		harnessId: record.harnessId,
 		harnessArn: record.arn,
 		sessionId,
+		// "generated" means the node created a fresh session this run (Session ID
+		// left blank) — i.e. this is a NEW conversation and prior turns are not
+		// recalled. "provided" means the user supplied a stable Session ID, so the
+		// conversation continues. See the Session ID field help.
+		sessionSource: sessionInput ? 'provided' : 'generated',
+		...(cfg.actorId ? { actorId: cfg.actorId } : {}),
+		...(harnessSummary ? { harness: harnessSummary } : {}),
 		response: result.text,
 		stopReason: result.stopReason,
 		toolUses: result.toolUses,
 		usage: result.usage,
 		latencyMs: result.latencyMs,
+		...versionEndpointOutput,
 	};
 }
 
@@ -407,50 +533,62 @@ async function runAgent(
 async function invokeExisting(
 	ctx: IExecuteFunctions,
 	itemIndex: number,
+	region: string,
+	controlClient: any,
 	dataClient: any,
 	InvokeHarnessCommand: any,
+	GetHarnessCommand: any,
 ): Promise<IDataObject> {
 	const harnessArn = (ctx.getNodeParameter('harnessArn', itemIndex) as string).trim();
 	validateHarnessArn(harnessArn);
-	const prompt = ctx.getNodeParameter('prompt', itemIndex) as string;
+	const prompt = ctx.getNodeParameter('prompt', itemIndex, '') as string;
 
 	// In the merged operation the visible config fields ARE the per-invocation
 	// overrides. A blank field sends nothing, so the harness config is used as-is.
-	const modelId = (ctx.getNodeParameter('modelId', itemIndex, '') as string).trim();
-	const systemPrompt = ctx.getNodeParameter('systemPrompt', itemIndex, '') as string;
-	const toolsUi = ctx.getNodeParameter('tools', itemIndex, {}) as IDataObject;
-	const additional = ctx.getNodeParameter('additionalOptions', itemIndex, {}) as IDataObject;
+	const cfg = resolveConfig(ctx, itemIndex, false);
 
-	const sessionId = resolveSessionId(ctx.getNodeParameter('sessionId', itemIndex, '') as string);
-
-	const overrideTools = buildToolsArray(toolsUi);
+	const sessionInput = (ctx.getNodeParameter('sessionId', itemIndex, '') as string).trim();
+	const sessionId = resolveSessionId(sessionInput);
+	const messages = buildMessages(ctx, itemIndex, prompt);
 
 	const invokePayload = buildInvokePayload({
 		harnessArn,
 		runtimeSessionId: sessionId,
-		prompt,
-		modelId: modelId || undefined,
-		systemPrompt: systemPrompt.trim() ? systemPrompt : undefined,
-		tools: overrideTools.length > 0 ? overrideTools : undefined,
-		actorId: (additional.actorId as string) || undefined,
-		maxIterations: additional.maxIterations as number | undefined,
-		maxTokens: additional.maxTokens as number | undefined,
-		timeoutSeconds: additional.timeoutSeconds as number | undefined,
+		messages,
+		modelConfig: cfg.modelConfig,
+		systemPrompt: cfg.systemPrompt.trim() ? cfg.systemPrompt : undefined,
+		tools: cfg.tools.length > 0 ? cfg.tools : undefined,
+		skills: cfg.skills,
+		actorId: cfg.actorId || undefined,
+		qualifier: cfg.qualifier,
+		maxIterations: cfg.maxIterations,
+		maxTokens: cfg.maxTokens,
+		timeoutSeconds: cfg.timeoutSeconds,
 	});
 
-	const response = await dataClient.send(new InvokeHarnessCommand(invokePayload));
-	const stream = (response as any).stream;
-	if (!stream) {
-		throw new NodeOperationError(ctx.getNode(), 'InvokeHarness returned no stream', {
-			itemIndex,
-		});
-	}
-	const result = await consumeStream(stream);
+	const result = await invoke(ctx, itemIndex, region, dataClient, InvokeHarnessCommand, {
+		harnessArn,
+		runtimeSessionId: sessionId,
+		runtimeUserId: cfg.runtimeUserId,
+		qualifier: cfg.qualifier,
+		payload: invokePayload,
+	});
+
+	// Best-effort harness summary (memory ARN, model, version, …) for visibility.
+	// Uses control-plane GetHarness, which is SigV4 even on the OAuth invoke path.
+	const harnessSummary = await getHarnessSummary(
+		controlClient,
+		GetHarnessCommand,
+		harnessIdFromArn(harnessArn),
+	);
 
 	return {
 		operation: 'invokeExisting',
 		harnessArn,
 		sessionId,
+		sessionSource: sessionInput ? 'provided' : 'generated',
+		...(cfg.actorId ? { actorId: cfg.actorId } : {}),
+		...(harnessSummary ? { harness: harnessSummary } : {}),
 		response: result.text,
 		stopReason: result.stopReason,
 		toolUses: result.toolUses,
@@ -458,6 +596,176 @@ async function invokeExisting(
 		latencyMs: result.latencyMs,
 	};
 }
+
+/* ----- invoke dispatch (SigV4 vs OAuth Bearer) ----- */
+
+interface InvokeDispatch {
+	harnessArn: string;
+	runtimeSessionId: string;
+	runtimeUserId: string;
+	qualifier: string;
+	payload: IDataObject;
+}
+
+/**
+ * Dispatches the invoke through either the SDK (SigV4) or the raw-HTTPS Bearer
+ * path, depending on the Authentication field. Both paths funnel through
+ * consumeStream so the output shape is identical.
+ */
+async function invoke(
+	ctx: IExecuteFunctions,
+	itemIndex: number,
+	region: string,
+	dataClient: any,
+	InvokeHarnessCommand: any,
+	dispatch: InvokeDispatch,
+) {
+	const authentication = ctx.getNodeParameter('authentication', itemIndex, 'awsSigV4') as string;
+
+	if (authentication === 'oauthBearer') {
+		const bearerToken = (ctx.getNodeParameter('bearerToken', itemIndex, '') as string).trim();
+		if (!bearerToken) {
+			throw new NodeOperationError(
+				ctx.getNode(),
+				'OAuth Bearer authentication selected but no Bearer Token was provided.',
+				{ itemIndex },
+			);
+		}
+		// The raw-HTTPS body excludes the path/header params (harnessArn,
+		// runtimeSessionId, qualifier go on the URL/headers).
+		const { harnessArn, runtimeSessionId, qualifier, ...body } = dispatch.payload as IDataObject &
+			Record<string, unknown>;
+		void harnessArn;
+		void runtimeSessionId;
+		void qualifier;
+		return invokeWithBearer({
+			region,
+			harnessArn: dispatch.harnessArn,
+			bearerToken,
+			runtimeSessionId: dispatch.runtimeSessionId,
+			qualifier: dispatch.qualifier || undefined,
+			runtimeUserId: dispatch.runtimeUserId || undefined,
+			body,
+		});
+	}
+
+	const payload: IDataObject = { ...dispatch.payload };
+	if (dispatch.runtimeUserId) payload.runtimeUserId = dispatch.runtimeUserId;
+	const response = await dataClient.send(new InvokeHarnessCommand(payload));
+	const stream = (response as any).stream;
+	if (!stream) {
+		throw new NodeOperationError(ctx.getNode(), 'InvokeHarness returned no stream', {
+			itemIndex,
+		});
+	}
+	return consumeStream(stream);
+}
+
+/* ----- versioning / endpoints (opt-in) ----- */
+
+async function manageVersionsAndEndpoints(
+	controlClient: any,
+	harnessId: string,
+	provisioning: IDataObject,
+): Promise<IDataObject> {
+	const output: IDataObject = {};
+
+	if (provisioning.listVersions === true) {
+		output.versions = await listHarnessVersions(controlClient, harnessId);
+	}
+
+	const endpointName = ((provisioning.endpointName as string) || '').trim();
+	if (endpointName) {
+		validateEndpointName(endpointName);
+		const targetVersion = ((provisioning.endpointTargetVersion as string) || '').trim();
+		const description = ((provisioning.endpointDescription as string) || '').trim();
+		output.endpoint = await upsertHarnessEndpoint(
+			controlClient,
+			harnessId,
+			endpointName,
+			targetVersion || undefined,
+			description || undefined,
+		);
+		// Surface the full endpoint list too, for convenience.
+		output.endpoints = await listHarnessEndpoints(controlClient, harnessId);
+	}
+
+	return output;
+}
+
+/* ----- message construction (incl. inline-function tool-result round-trip) ----- */
+
+/**
+ * Builds the messages array. Normally just the user prompt; if Tool Results are
+ * provided (inline-function round-trip), prepends the assistant tool-use message
+ * and appends the user tool-result message on the same turn, per the harness
+ * contract (TODO(v0.2-question-6)). The prompt is optional in that case.
+ */
+function buildMessages(ctx: IExecuteFunctions, itemIndex: number, prompt: string): IDataObject[] {
+	const toolResultsUi = ctx.getNodeParameter('toolResults', itemIndex, {}) as IDataObject;
+	const entries = (toolResultsUi.result as IDataObject[] | undefined) ?? [];
+
+	const messages: IDataObject[] = [];
+
+	if (entries.length > 0) {
+		// Assistant message replays the tool-use blocks the model emitted.
+		const assistantContent: IDataObject[] = [];
+		const toolResultContent: IDataObject[] = [];
+		for (const entry of entries) {
+			const toolUseId = ((entry.toolUseId as string) || '').trim();
+			const name = ((entry.name as string) || '').trim();
+			if (!toolUseId || !name) {
+				throw new ApplicationError(
+					'Each Tool Result requires a Tool Use ID and Function Name (from the prior invocation output).',
+				);
+			}
+			const input = parseToolInput(entry.input);
+			assistantContent.push({ toolUse: { toolUseId, name, input } });
+			toolResultContent.push({
+				toolResult: {
+					toolUseId,
+					content: [{ text: (entry.content as string) ?? '' }],
+					status: (entry.status as string) || 'success',
+				},
+			});
+		}
+		messages.push({ role: 'assistant', content: assistantContent });
+		messages.push({ role: 'user', content: toolResultContent });
+		return messages;
+	}
+
+	if (!prompt) {
+		throw new ApplicationError('A Prompt is required (unless sending Tool Results back).');
+	}
+	messages.push({ role: 'user', content: [{ text: prompt }] });
+	return messages;
+}
+
+function parseToolInput(value: unknown): unknown {
+	if (value === undefined || value === null || value === '') return {};
+	if (typeof value === 'object') return value;
+	if (typeof value === 'string') {
+		try {
+			return JSON.parse(value);
+		} catch {
+			// Not JSON — pass the raw string through.
+			return value;
+		}
+	}
+	return value;
+}
+
+function parseFilesystemMounts(mountsUi: IDataObject | undefined): FilesystemMount[] {
+	if (!mountsUi || !mountsUi.mount) return [];
+	const entries = mountsUi.mount as IDataObject[];
+	return entries.map((m) => ({
+		type: m.type as FilesystemMount['type'],
+		mountPath: (m.mountPath as string) || '',
+		accessPointArn: (m.accessPointArn as string) || undefined,
+	}));
+}
+
+/* ----- validators ----- */
 
 function validateAgentName(name: string): void {
 	if (!/^[A-Za-z][A-Za-z0-9_]{0,39}$/.test(name)) {
@@ -483,23 +791,25 @@ function validateExecutionRoleArn(arn: string): void {
 	}
 }
 
+function validateEndpointName(name: string): void {
+	if (!/^[A-Za-z][A-Za-z0-9_]{0,47}$/.test(name)) {
+		throw new ApplicationError(
+			`Invalid endpoint name: "${name}". Must start with a letter and contain only letters, numbers, and underscores (max 48 chars).`,
+		);
+	}
+}
+
 /**
  * Resolves an existing harness for the given agent name by querying AWS.
  * This is the source of truth. Workflow static data is used as a fast-path
  * cache but its absence or staleness must never cause a CreateHarness call
  * when the harness already exists in the AWS account.
- *
- * Returns the live record if found and READY; null otherwise.
- * Throws if an unexpected state is encountered (e.g. CREATE_FAILED).
  */
 async function resolveExistingHarness(
 	controlClient: any,
 	commands: SdkCommands,
 	agentName: string,
 ): Promise<{ harnessId: string; arn: string; status: string } | null> {
-	// List harnesses; paginate until we find one with a matching name prefix.
-	// AgentCore suffixes a random 10-char ID to the user-supplied agent name,
-	// so we match on `harnessName === agentName` OR `harnessName startsWith agentName-`.
 	let nextToken: string | undefined;
 	do {
 		const resp = await controlClient.send(
@@ -508,13 +818,12 @@ async function resolveExistingHarness(
 				...(nextToken ? { nextToken } : {}),
 			}),
 		);
-		const summaries = resp.harnessSummaries ?? resp.harnesses ?? resp.items ?? [];
+		const summaries = resp.harnesses ?? resp.harnessSummaries ?? resp.items ?? [];
 		const match = summaries.find((h: any) => {
 			const name = h.harnessName ?? h.name ?? h.harnessId ?? '';
 			return name === agentName || name.startsWith(agentName + '-');
 		});
 		if (match) {
-			// Hydrate with full details so callers can check drift or readiness.
 			const detail = await controlClient.send(
 				new commands.GetHarnessCommand({ harnessId: match.harnessId }),
 			);
@@ -531,6 +840,87 @@ async function resolveExistingHarness(
 	return null;
 }
 
+/**
+ * Reads the live harness back via GetHarness and distills the fields users care
+ * about into a flat summary: the provisioned memory (incl. the managed-memory
+ * ARN the service assigns), the resolved model, version, network mode, custom
+ * container, and tool/skill counts. Best-effort — returns undefined on any
+ * error so surfacing this never breaks the invoke result.
+ */
+async function getHarnessSummary(
+	controlClient: any,
+	GetHarnessCommand: any,
+	harnessId: string,
+): Promise<IDataObject | undefined> {
+	try {
+		const detail = await controlClient.send(new GetHarnessCommand({ harnessId }));
+		return summarizeHarness(detail.harness ?? {});
+	} catch {
+		return undefined;
+	}
+}
+
+function summarizeHarness(h: any): IDataObject {
+	const summary: IDataObject = {};
+	if (h.status) summary.status = h.status;
+	if (h.harnessVersion) summary.version = h.harnessVersion;
+
+	const mem = h.memory ?? {};
+	if (mem.managedMemoryConfiguration) {
+		const m = mem.managedMemoryConfiguration;
+		summary.memory = {
+			mode: 'managed',
+			arn: m.arn,
+			...(m.strategies ? { strategies: m.strategies } : {}),
+			...(m.eventExpiryDuration !== undefined
+				? { eventExpiryDuration: m.eventExpiryDuration }
+				: {}),
+		};
+	} else if (mem.agentCoreMemoryConfiguration) {
+		const m = mem.agentCoreMemoryConfiguration;
+		summary.memory = {
+			mode: 'byoArn',
+			arn: m.arn,
+			...(m.actorId ? { actorId: m.actorId } : {}),
+		};
+	} else if (mem.disabled) {
+		summary.memory = { mode: 'disabled' };
+	}
+
+	const model = h.model ?? {};
+	const providerKey = Object.keys(model)[0];
+	if (providerKey) {
+		const providerNames: Record<string, string> = {
+			bedrockModelConfig: 'bedrock',
+			openAiModelConfig: 'openai',
+			geminiModelConfig: 'gemini',
+			liteLlmModelConfig: 'litellm',
+		};
+		summary.model = {
+			provider: providerNames[providerKey] ?? providerKey,
+			modelId: model[providerKey]?.modelId,
+			...(model[providerKey]?.apiFormat ? { apiFormat: model[providerKey].apiFormat } : {}),
+		};
+	}
+
+	const networkMode = h.environment?.agentCoreRuntimeEnvironment?.networkConfiguration?.networkMode;
+	if (networkMode) summary.networkMode = networkMode;
+
+	const containerUri = h.environmentArtifact?.containerConfiguration?.containerUri;
+	if (containerUri) summary.containerUri = containerUri;
+
+	if (Array.isArray(h.tools)) summary.toolCount = h.tools.length;
+	if (Array.isArray(h.skills)) summary.skillCount = h.skills.length;
+
+	return summary;
+}
+
+/** Extracts the harnessId (the `<name>-<10char>` suffix) from a harness ARN. */
+function harnessIdFromArn(arn: string): string {
+	const idx = arn.lastIndexOf('harness/');
+	return idx === -1 ? '' : arn.slice(idx + 'harness/'.length);
+}
+
 function resolveSessionId(input: string): string {
 	if (!input) return randomUUID();
 
@@ -539,14 +929,10 @@ function resolveSessionId(input: string): string {
 	let sessionId: string;
 
 	if (isValid && input.length >= 33) {
-		// Valid and meets minimum length — use as-is
 		sessionId = input.slice(0, 128);
 	} else if (isValid) {
-		// Valid but too short — extend deterministically to meet 33-char minimum
 		sessionId = `${input}-${hash}`.slice(0, 128);
 	} else {
-		// Contains invalid characters — sanitize and append hash of original to prevent collisions
-		// Truncate sanitized prefix to guarantee full 64-char hash is preserved
 		const sanitized = input.replace(/[^A-Za-z0-9_-]/g, '_');
 		sessionId = `${sanitized.slice(0, 63)}-${hash}`;
 	}
@@ -554,39 +940,45 @@ function resolveSessionId(input: string): string {
 	return sessionId;
 }
 
+/* ----- provisioning payload builders ----- */
+
+interface ProvisionInput {
+	modelConfig?: IDataObject;
+	systemPrompt: string;
+	tools: ToolConfig[];
+	skills: IDataObject[];
+	memoryConfig?: IDataObject;
+	memoryUpdate?: IDataObject;
+	environment?: IDataObject;
+	environmentArtifact?: IDataObject;
+	environmentArtifactUpdate?: IDataObject;
+	maxIterations?: number;
+	maxTokens?: number;
+	timeoutSeconds?: number;
+}
+
 async function createHarness(
 	controlClient: any,
 	CreateHarnessCommand: any,
 	agentName: string,
 	executionRoleArn: string,
-	modelId: string,
-	systemPrompt: string,
-	tools: ToolConfig[],
-	maxIterations: number | undefined,
-	maxTokens: number | undefined,
-	timeoutSeconds: number | undefined,
-	memoryArn: string,
-	actorId: string,
+	input: ProvisionInput,
 	desiredHash: string,
 ): Promise<HarnessRecord> {
 	const payload: IDataObject = {
 		harnessName: agentName,
 		executionRoleArn,
-		model: { bedrockModelConfig: { modelId } },
-		systemPrompt: [{ text: systemPrompt }],
+		systemPrompt: [{ text: input.systemPrompt }],
 	};
-	if (tools.length > 0) payload.tools = tools;
-	if (maxIterations !== undefined) payload.maxIterations = maxIterations;
-	if (maxTokens !== undefined) payload.maxTokens = maxTokens;
-	if (timeoutSeconds !== undefined) payload.timeoutSeconds = timeoutSeconds;
-	if (memoryArn) {
-		payload.memory = {
-			agentCoreMemoryConfiguration: {
-				arn: memoryArn,
-				...(actorId ? { actorId } : {}),
-			},
-		};
-	}
+	if (input.modelConfig) payload.model = input.modelConfig;
+	if (input.tools.length > 0) payload.tools = input.tools;
+	if (input.skills.length > 0) payload.skills = input.skills;
+	if (input.memoryConfig) payload.memory = input.memoryConfig;
+	if (input.environment) payload.environment = input.environment;
+	if (input.environmentArtifact) payload.environmentArtifact = input.environmentArtifact;
+	if (input.maxIterations !== undefined) payload.maxIterations = input.maxIterations;
+	if (input.maxTokens !== undefined) payload.maxTokens = input.maxTokens;
+	if (input.timeoutSeconds !== undefined) payload.timeoutSeconds = input.timeoutSeconds;
 
 	const response = await controlClient.send(new CreateHarnessCommand(payload));
 	const harness = response.harness ?? {};
@@ -613,35 +1005,25 @@ async function updateHarness(
 	UpdateHarnessCommand: any,
 	harnessId: string,
 	arn: string,
-	modelId: string,
-	systemPrompt: string,
-	tools: ToolConfig[],
-	maxIterations: number | undefined,
-	maxTokens: number | undefined,
-	timeoutSeconds: number | undefined,
-	memoryArn: string,
-	actorId: string,
+	input: ProvisionInput,
 	desiredHash: string,
 ): Promise<HarnessRecord> {
 	const payload: IDataObject = {
 		harnessId,
-		model: { bedrockModelConfig: { modelId } },
-		systemPrompt: [{ text: systemPrompt }],
+		systemPrompt: [{ text: input.systemPrompt }],
 	};
-	if (tools.length > 0) payload.tools = tools;
-	if (maxIterations !== undefined) payload.maxIterations = maxIterations;
-	if (maxTokens !== undefined) payload.maxTokens = maxTokens;
-	if (timeoutSeconds !== undefined) payload.timeoutSeconds = timeoutSeconds;
-	if (memoryArn) {
-		payload.memory = {
-			optionalValue: {
-				agentCoreMemoryConfiguration: {
-					arn: memoryArn,
-					...(actorId ? { actorId } : {}),
-				},
-			},
-		};
+	if (input.modelConfig) payload.model = input.modelConfig;
+	if (input.tools.length > 0) payload.tools = input.tools;
+	if (input.skills.length > 0) payload.skills = input.skills;
+	// Memory + environmentArtifact use the optionalValue wrapper on update.
+	if (input.memoryUpdate) payload.memory = input.memoryUpdate;
+	if (input.environment) payload.environment = input.environment;
+	if (input.environmentArtifactUpdate) {
+		payload.environmentArtifact = input.environmentArtifactUpdate;
 	}
+	if (input.maxIterations !== undefined) payload.maxIterations = input.maxIterations;
+	if (input.maxTokens !== undefined) payload.maxTokens = input.maxTokens;
+	if (input.timeoutSeconds !== undefined) payload.timeoutSeconds = input.timeoutSeconds;
 
 	await controlClient.send(new UpdateHarnessCommand(payload));
 
@@ -655,15 +1037,18 @@ async function updateHarness(
 	return { harnessId, arn, configHash: desiredHash };
 }
 
+/* ----- invoke payload builder ----- */
+
 interface InvokePayloadInput {
 	harnessArn: string;
 	runtimeSessionId: string;
-	prompt: string;
-	modelId?: string;
+	messages: IDataObject[];
+	modelConfig?: IDataObject;
 	systemPrompt?: string;
 	tools?: ToolConfig[];
-	memoryArn?: string;
+	skills?: IDataObject[];
 	actorId?: string;
+	qualifier?: string;
 	maxIterations?: number;
 	maxTokens?: number;
 	timeoutSeconds?: number;
@@ -673,26 +1058,15 @@ function buildInvokePayload(input: InvokePayloadInput): IDataObject {
 	const payload: IDataObject = {
 		harnessArn: input.harnessArn,
 		runtimeSessionId: input.runtimeSessionId,
-		messages: [
-			{
-				role: 'user',
-				content: [{ text: input.prompt }],
-			},
-		],
+		messages: input.messages,
 	};
 
-	if (input.modelId) {
-		payload.model = { bedrockModelConfig: { modelId: input.modelId } };
-	}
-	if (input.systemPrompt) {
-		payload.systemPrompt = [{ text: input.systemPrompt }];
-	}
-	if (input.tools && input.tools.length > 0) {
-		payload.tools = input.tools;
-	}
-	if (input.actorId) {
-		payload.actorId = input.actorId;
-	}
+	if (input.qualifier) payload.qualifier = input.qualifier;
+	if (input.modelConfig) payload.model = input.modelConfig;
+	if (input.systemPrompt) payload.systemPrompt = [{ text: input.systemPrompt }];
+	if (input.tools && input.tools.length > 0) payload.tools = input.tools;
+	if (input.skills && input.skills.length > 0) payload.skills = input.skills;
+	if (input.actorId) payload.actorId = input.actorId;
 	if (input.maxIterations !== undefined) payload.maxIterations = input.maxIterations;
 	if (input.maxTokens !== undefined) payload.maxTokens = input.maxTokens;
 	if (input.timeoutSeconds !== undefined) payload.timeoutSeconds = input.timeoutSeconds;

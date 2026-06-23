@@ -1,16 +1,14 @@
 # @aws/n8n-nodes-agentcore
 
-An n8n community node for **Amazon Bedrock AgentCore Harness**. Run production-grade AI agents with isolated microVMs, real browsers, real code execution, and persistent memory — directly from your n8n workflows.
+An n8n community node for **Amazon Bedrock AgentCore harness**. Run production-grade AI agents with isolated microVMs, real browsers, real code execution, and persistent memory — directly from your n8n workflows.
 
-> **Public preview notice:** Amazon Bedrock AgentCore Harness is in public preview.
-> This node targets the preview APIs and is supported in the four preview regions
-> (us-east-1, us-west-2, ap-southeast-2, eu-central-1). APIs may evolve before GA.
-> Pin this package to a specific version in production and review release notes
-> before upgrading.
+> Supported in the AgentCore regions us-east-1, us-west-2, ap-southeast-2, and
+> eu-central-1. Pin this package to a specific version in production and review
+> release notes before upgrading.
 
 ## Why this node?
 
-n8n’s native AI Agent node is great for simple agents, but hits walls fast: no cross-session memory, no real browser, no real code execution, and short execution timeouts. AgentCore Harness solves all four. This node is the bridge.
+n8n’s native AI Agent node is great for simple agents, but hits walls fast: no cross-session memory, no real browser, no real code execution, and short execution timeouts. AgentCore harness solves all four. This node is the bridge.
 
 |Capability    |Native n8n AI Agent|AgentCore Agent (this node)               |
 |--------------|-------------------|------------------------------------------|
@@ -23,8 +21,14 @@ n8n’s native AI Agent node is great for simple agents, but hits walls fast: no
 ## Features
 
 - **Auto-provision & reuse** — Leave the Harness ARN blank: the node creates a harness on first run, reuses it across executions, and updates it when configuration changes
-- **Bring your own harness** — Paste a Harness ARN (deployed via CLI / CloudFormation / console / Terraform) to invoke it directly, with any config field acting as a per-invocation override
-- **Inline tool configuration** — AgentCore Browser, Code Interpreter, Gateway, and remote MCP servers
+- **Bring your own harness** — Paste a harness ARN (deployed via CLI / CloudFormation / console / Terraform) to invoke it directly, with any config field acting as a per-invocation override
+- **Multi-provider models** (v0.2) — Amazon Bedrock (native), OpenAI, Google Gemini, and LiteLLM, switchable per invocation
+- **Managed memory** (v0.2) — auto-provisioned AgentCore Memory with configurable strategies, or bring your own Memory ARN, or disable it
+- **Inline tool configuration** — AgentCore Browser, Code Interpreter, Web Search, Gateway (with optional OAuth outbound auth), remote MCP servers, and inline functions
+- **Skills** (v0.2) — AWS curated catalog, Git, S3, and filesystem-path sources
+- **VPC, custom containers, and filesystem mounts** (v0.2) — run in your VPC, bring a linux/arm64 ECR image, mount session storage / EFS / S3 Files
+- **OAuth Bearer invoke** (v0.2) — invoke inbound-OAuth harnesses with a JWT from an upstream node
+- **Versions & endpoints** (v0.2) — list immutable versions, pin named endpoints, invoke by qualifier
 - **Streaming responses** with structured tool-use trace, token usage, and latency metadata
 - **Session persistence** — pass the same session ID across executions for multi-turn conversations
 - **Execution limits** — max iterations, max tokens, timeout
@@ -57,39 +61,50 @@ You need:
 
 ### IAM setup
 
-**1. Caller permissions** — the IAM user or role whose access keys go into the
-n8n credential needs the actions listed in the 
-[Required IAM permissions for
-callers](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/harness-security.html#harness-iam-callers)
-table, scoped to your harness ARN(s).
+> **Source of truth:** AWS maintains the canonical, least-privilege harness IAM
+> policies in the
+> [AgentCore harness security guide](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/harness-security.html)
+> and updates them as the service ships features. Grant **only** the statements
+> for the features your workflow actually uses — do not paste a broad policy.
+> This repo intentionally ships only the trust policy (`docs/iam-trust-policy.json`);
+> the permission policies live in the AWS guide so they never drift.
 
-**2. Trust policy** for the execution role:
+Two separate IAM principals are involved — keep them distinct:
 
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [{
-    "Effect": "Allow",
-    "Principal": {"Service": "bedrock-agentcore.amazonaws.com"},
-    "Action": "sts:AssumeRole"
-  }]
-}
-```
+**1. Caller** — the IAM user/role whose access keys go in the n8n credential.
+Grant the actions in the
+[Required IAM permissions for callers](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/harness-security.html#harness-iam-permissions)
+table, **scoped to your harness ARN** (`arn:aws:bedrock-agentcore:<region>:<account>:harness/*`;
+`ListHarnesses` requires `*`). That table already lists the paired
+`*AgentRuntime*` / `*Memory` companion actions each harness API needs.
 
-**3. Permissions policy** for the execution role: use the
-[Sample execution role policy](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/harness-security.html#harness-execution-role-policy)
-maintained in the AgentCore developer guide. Append optional add-ons based on
-what your workflow uses:
+**2. Execution role** — the role AgentCore assumes at runtime. Use the
+[Sample execution role policy](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/harness-security.html#_sample_execution_role_policy),
+plus the trust policy in `docs/iam-trust-policy.json`.
 
-- BYO Memory ARN → AgentCore Memory add-on
-- Gateway tool → AgentCore Gateway add-on
-- (OpenAI / Gemini and OAuth-protected Gateway are v0.2 features — not needed for v0.1)
+#### Which permissions each feature needs
 
-AWS maintains this policy and updates it as AgentCore ships new features —
-single source of truth.
+Add only the blocks for features you enable. Each maps to a named section in the
+AWS guide's
+[Additional permissions for optional features](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/harness-security.html#_additional_permissions_for_optional_features):
 
-> v0.2 will replace this manual step with `agentcore iam create-execution-role`
-> which generates the role automatically.
+| If your workflow uses… | Add (least-privilege, scope to the named resource) |
+|---|---|
+| **Managed memory** (the v0.2 default) or BYO Memory | Caller: `CreateMemory`/`UpdateMemory`/`DeleteMemory` (per the callers table). Execution role: the *AgentCore Memory* block (`CreateEvent`/`GetEvent`/`ListEvents`/`DeleteEvent`/`RetrieveMemoryRecords`) scoped to your `memory/*`. |
+| **OpenAI / Gemini / LiteLLM models, or MCP header credential refs** | Execution role: the *API key credential provider* block (`bedrock-agentcore:GetResourceApiKey` + the matching `secretsmanager:GetSecretValue` on `…identity!default/apikey/…`). |
+| **OpenAI via Bedrock Mantle** (no API key) | Execution role: `bedrock-mantle:CreateInference`, scoped to `arn:aws:bedrock-mantle:<region>:<account>:project/default`. (Mantle is a separate IAM namespace from `bedrock:`; not in the canned sample — add it explicitly.) |
+| **AgentCore Gateway tool** | Execution role: the *AgentCore Gateway* block (`bedrock-agentcore:InvokeGateway` on your `gateway/<id>`); for OAuth-protected gateways also the *OAuth2 credential provider* block. |
+| **Skills from S3** (or S3 Files data) | Execution role: the *Skill sources in S3* block (`s3:GetObject`/`s3:ListBucket` on your bucket). Private **Git** skills: an API key credential provider holding the PAT. |
+| **Custom container (private ECR)** | Execution role: the *Private ECR access* block — `ecr:GetDownloadUrlForLayer`/`ecr:BatchGetImage` scoped to your `repository/<name>`, and `ecr:GetAuthorizationToken` on `*` (that action can't be resource-scoped). |
+| **EFS filesystem mount** (VPC) | Execution role: `elasticfilesystem:ClientMount`/`ClientWrite` scoped to your access-point ARN. (Session-storage mounts need no extra IAM; no `ClientRootAccess`.) |
+| **Versions / named endpoints** | Caller: `ListHarnessVersions` and the `*HarnessEndpoint` actions, plus the paired `*AgentRuntimeEndpoint` actions (per the callers table). |
+| **VPC networking** | No extra IAM — it's a `networkConfiguration` on the harness. Your VPC needs a NAT route to `public.ecr.aws` (see the guide's Network configuration section). |
+
+`iam:PassRole` is **not** required: the execution-role ARN is passed to
+CreateHarness as a parameter and assumed by the service, not passed by the caller.
+
+> A future `agentcore iam create-execution-role` CLI command will generate the
+> role automatically (separate workstream).
 
 ## Configuring credentials
 
@@ -133,21 +148,95 @@ For a harness deployed outside n8n (CLI, console, CloudFormation, Terraform). Th
   "sessionId": "a1b2c3d4-...",
   "response": "The top 3 quantum computing breakthroughs are ...",
   "stopReason": "end_turn",
-  "toolUses": [{ "name": "exa", "toolUseId": "..." }],
+  "toolUses": [{ "name": "exa", "toolUseId": "...", "input": { "query": "..." } }],
   "usage": { "inputTokens": 234, "outputTokens": 567 },
   "latencyMs": 4123
 }
 ```
 
+When versioning/endpoint actions are enabled, the output also carries
+`versions` and/or `endpoint` (+ `endpoints`).
+
+## v0.2 capabilities
+
+### Models
+
+Pick a **Model Provider** (Amazon Bedrock, OpenAI, Google Gemini, LiteLLM) and a
+**Model ID**, and expand **Model Options** for API Key ARN, API Base URL, API
+Format, temperature, top-p/k, and JSON additional params. OpenAI and Gemini
+require an API Key ARN (an AgentCore Identity token-vault credential provider).
+To call OpenAI-style models through **Bedrock Mantle without a key**, pick the
+Bedrock provider and set API Format to `Responses` or `Chat Completions` with a
+Mantle model id (e.g. `openai.gpt-4o`). You can switch providers between turns of
+one session and the conversation continues.
+
+### Memory
+
+**Memory Mode** (Provisioning Options) chooses **Managed** (auto-provision, the
+default — configurable strategies and event expiry), **Bring Your Own ARN**, or
+**Disabled**. A populated **Memory ARN** is always treated as BYO so v0.1
+workflows are unaffected.
+
+### Tools & skills
+
+Tools now include **Web Search** (managed, no setup), **Gateway** with optional
+OAuth outbound auth, and **Inline Functions**. **Skills** load domain knowledge
+on demand from the AWS catalog (glob patterns), Git, S3, or a filesystem path.
+
+#### Inline-function round-trip
+
+Add an **Inline Function** tool (name, description, JSON input schema). When the
+agent calls it, the invocation returns `stopReason: "tool_use"` and the output's
+`toolUses[]` carries the `toolUseId`, `name`, and parsed `input`. Compute the
+result in your workflow, then on a second node placement (same Session ID) fill
+the **Tool Results** field (Tool Use ID, function name, original input, result
+content). The node replays the assistant tool-use + your tool-result on the same
+session and the agent resumes. The Prompt may be blank on that second call.
+
+### VPC, containers, filesystems
+
+Set **Network Mode = VPC** (plus subnets and security groups) on the credential
+to run harnesses in your VPC. Provisioning Options add a **Container Image URI**
+(linux/arm64 ECR) and **Filesystem Mounts** (session storage with no VPC; EFS and
+S3 Files access points require VPC).
+
+### OAuth Bearer invoke
+
+For a harness with an inbound OAuth (JWT) authorizer, set **Authentication =
+OAuth Bearer Token** and populate **Bearer Token** (an operation-level field, so
+you can wire it from an upstream auth node via `={{ $json.id_token }}`). The node
+makes a raw HTTPS request to InvokeHarness because the AWS SDK cannot attach a
+Bearer token. Provisioning and other control-plane calls always use SigV4.
+
+### Versions & endpoints
+
+Enable **List Versions** to return all immutable versions. Set an **Endpoint
+Name** (+ optional **Target Version**) to create or update a named endpoint
+pinned to a version. Use **Additional Options ▸ Endpoint (Qualifier)** to invoke
+a specific endpoint instead of the latest version.
+
+> **Migrating from v0.1?** v0.2 is additive — existing workflows keep working.
+> The one behavior change to know: memory now defaults to **Managed** for new
+> placements (a populated Memory ARN is still honored as BYO; set Memory Mode =
+> Disabled for the old no-memory behavior). Force Recreate now disassociates
+> managed memory instead of deleting it, and the run-mode default model is
+> Claude Sonnet 4.6.
+
 ## Examples
 
-The `examples/` folder has three importable workflows:
+The `examples/` folder has importable workflows:
 
 1. **`01-mcp-research-agent.json`** — Research agent using Exa search (remote MCP)
 2. **`02-code-interpreter.json`** — Data analyst agent that writes and runs Python
 3. **`03-multiturn-support.json`** — Webhook-triggered support agent with session persistence
+4. **`04-multi-provider-switch.json`** — Bedrock on turn 1, Gemini via LiteLLM on turn 2, same session (v0.2)
+5. **`05-oauth-invoke.json`** — Fetch a Cognito token, then invoke an OAuth-protected harness with the Bearer token (v0.2)
+6. **`06-skills-agent.json`** — Agent loading AWS catalog + Git + S3 skills (v0.2)
+7. **`07-inline-function-roundtrip.json`** — Inline function tool_use → compute result → send it back (v0.2)
+8. **`08-vpc-filesystem.json`** — VPC harness with an EFS access-point mount (v0.2)
 
-Import any of them via **Workflows → Import from File** in n8n.
+Import any of them via **Workflows → Import from File** in n8n. The v0.2 examples
+contain placeholder ARNs / IDs — replace them with your own.
 
 ## Local development
 
@@ -243,19 +332,24 @@ The package name `@aws/n8n-nodes-agentcore` matches n8n’s required
 
 |Version           |Capability                                                                                       |
 |------------------|-------------------------------------------------------------------------------------------------|
-|**v0.1** (current)|Run Agent, Invoke Existing, MCP / Browser / Code Interpreter / Gateway tools, streaming, sessions|
-|**v0.2**          |n8n nodes as harness tools (inline functions). Sub-node-style tool wiring.                       |
-|**v0.3**          |Memory auto-provisioning. Today, BYO Memory ARN only.                                            |
-|**v0.4**          |Custom container support (BYO Docker image)                                                      |
-|**v0.5**          |One-click CloudFormation quick-create for the IAM execution role                                 |
+|**v0.1**          |Run Agent, Invoke Existing, MCP / Browser / Code Interpreter / Gateway tools, streaming, sessions|
+|**v0.2** (current)|Multi-provider models, managed memory, VPC, custom containers, filesystem mounts, skills, inline functions, web search, OAuth Bearer invoke, versions & endpoints|
+|**later**         |ExecuteCommand (shell) with Bearer, custom Browser/Code Interpreter resources, CloudFormation quick-create, Export to Code, Step Functions|
 
-## Limitations (v0.1)
+## Limitations (v0.2)
 
-- **Inline functions not yet supported.** v1 only supports AgentCore-native tools (MCP, Browser, Code Interpreter, Gateway). n8n nodes-as-tools wiring comes in v0.2.
-- **No memory auto-provisioning.** Use the Memory ARN field to bring an existing memory.
-- **No custom container support.** Default environment only.
-- **First run is slow.** ~30 seconds for harness creation. Subsequent runs are instant.
-- **Workflow static data** holds the harness ARN. Renaming an agent creates a new harness; the old one remains in your account until manually deleted.
+- **No shell ExecuteCommand.** `InvokeAgentRuntimeCommand` (root shell in the
+  microVM, not scoped by `allowedTools`) is intentionally not exposed for
+  security reasons.
+- **OpenAI-via-Mantle without a key** uses the Bedrock provider with API Format
+  `Responses`/`Chat Completions`; the SDK's `openAiModelConfig` requires an API
+  key (Q1).
+- **First run is slow.** ~30 seconds for harness creation; managed memory adds a
+  little more. Subsequent runs are instant.
+- **Workflow static data** holds the harness ARN. Renaming an agent creates a new
+  harness; the old one remains in your account until manually deleted.
+- **Inline functions are stateless across calls.** The tool-result round-trip is
+  a two-node pattern (Tool Results field), not an in-node interactive pause.
 
 ## Getting help and contributing
 

@@ -1,0 +1,86 @@
+{
+	"name": "AgentCore — Inline Function Round-Trip",
+	"nodes": [
+		{
+			"parameters": {},
+			"id": "1",
+			"name": "Manual Trigger",
+			"type": "n8n-nodes-base.manualTrigger",
+			"typeVersion": 1,
+			"position": [240, 300]
+		},
+		{
+			"parameters": {
+				"agentName": "weather_agent",
+				"modelProvider": "bedrock",
+				"modelId": "global.anthropic.claude-sonnet-4-6",
+				"systemPrompt": "You help users with weather. Call get_weather when you need current conditions.",
+				"prompt": "What should I wear in Seattle today?",
+				"tools": {
+					"tool": [
+						{
+							"type": "inline_function",
+							"name": "get_weather",
+							"description": "Get the current weather for a city.",
+							"inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": { \"city\": { \"type\": \"string\" } },\n  \"required\": [\"city\"]\n}"
+						}
+					]
+				},
+				"sessionId": "={{ $execution.id }}-weather"
+			},
+			"id": "2",
+			"name": "Call 1 - Agent Requests Tool",
+			"type": "@aws/n8n-nodes-agentcore.agentCoreHarness",
+			"typeVersion": 1,
+			"position": [480, 300],
+			"credentials": { "agentCoreApi": { "id": "1", "name": "AgentCore creds" } }
+		},
+		{
+			"parameters": {
+				"jsCode": "// In a real workflow you'd call a weather API here using\n// $json.toolUses[0].input.city. We hard-code a result for the demo.\nreturn [{ json: { ...$json, computedWeather: '52F, light rain' } }];"
+			},
+			"id": "3",
+			"name": "Compute Tool Result",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [720, 300]
+		},
+		{
+			"parameters": {
+				"agentName": "weather_agent",
+				"modelProvider": "bedrock",
+				"modelId": "global.anthropic.claude-sonnet-4-6",
+				"prompt": "",
+				"sessionId": "={{ $execution.id }}-weather",
+				"toolResults": {
+					"result": [
+						{
+							"toolUseId": "={{ $json.toolUses[0].toolUseId }}",
+							"name": "={{ $json.toolUses[0].name }}",
+							"input": "={{ $json.toolUses[0].input }}",
+							"content": "={{ $json.computedWeather }}",
+							"status": "success"
+						}
+					]
+				}
+			},
+			"id": "4",
+			"name": "Call 2 - Send Tool Result",
+			"type": "@aws/n8n-nodes-agentcore.agentCoreHarness",
+			"typeVersion": 1,
+			"position": [960, 300],
+			"credentials": { "agentCoreApi": { "id": "1", "name": "AgentCore creds" } }
+		}
+	],
+	"connections": {
+		"Manual Trigger": {
+			"main": [[{ "node": "Call 1 - Agent Requests Tool", "type": "main", "index": 0 }]]
+		},
+		"Call 1 - Agent Requests Tool": {
+			"main": [[{ "node": "Compute Tool Result", "type": "main", "index": 0 }]]
+		},
+		"Compute Tool Result": {
+			"main": [[{ "node": "Call 2 - Send Tool Result", "type": "main", "index": 0 }]]
+		}
+	}
+}
