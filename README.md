@@ -208,6 +208,37 @@ you can wire it from an upstream auth node via `={{ $json.id_token }}`). The nod
 makes a raw HTTPS request to InvokeHarness because the AWS SDK cannot attach a
 Bearer token. Provisioning and other control-plane calls always use SigV4.
 
+#### Bearer token security (bring-your-own)
+
+The node does **not** mint, exchange, or derive the bearer token — it is
+strictly **bring-your-own**. You supply a token (a JWT from your harness's
+configured identity provider, or a token produced by AWS's token generator) and
+the node passes it through verbatim as the `Authorization: Bearer …` header. It
+is read per-execution from a password-masked field and is never logged or
+persisted by the node. Because you own the token, follow these practices:
+
+- **Prefer short-lived tokens.** Generate them per workflow run from an upstream
+  auth step (e.g. an OIDC/Cognito login node, or AWS's
+  [short-term Bedrock API key generator](https://docs.aws.amazon.com/bedrock/latest/userguide/api-keys-generate.html#api-keys-generate-short-term))
+  rather than pasting a long-lived token into the field. AWS strongly recommends
+  short-term credentials over long-term keys — see
+  [Alternatives to long-term access keys](https://docs.aws.amazon.com/IAM/latest/UserGuide/security-creds-programmatic-access.html#security-creds-alternatives-to-long-term-access-keys).
+- **Scope to the minimum.** The principal/identity behind the token (and the
+  harness's inbound authorizer — allowed audiences, clients, scopes) should grant
+  only the harness invoke actions needed, not broad Bedrock or account access.
+  Restrict at the IdP/authorizer and the IAM policy backing the token.
+- **Plan for revocation and expiry.** Use tokens with a short TTL so a leaked
+  token has a small window; revoke at the IdP (or delete the issuing
+  credential/IAM principal) if a token is exposed. Don't hard-code tokens in
+  saved workflows — bind them from a credential or an upstream auth node so they
+  rotate automatically.
+- **Treat the token as a secret in your workflow.** If it flows through other
+  nodes, avoid logging it; the node itself masks and never persists it.
+
+If you don't need per-user identity propagation, the default **AWS SigV4** path
+(IAM credentials from the n8n credential vault) is simpler and avoids handling
+tokens entirely.
+
 ### Versions & endpoints
 
 Enable **List Versions** to return all immutable versions. Set an **Endpoint
