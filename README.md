@@ -208,33 +208,37 @@ you can wire it from an upstream auth node via `={{ $json.id_token }}`). The nod
 makes a raw HTTPS request to InvokeHarness because the AWS SDK cannot attach a
 Bearer token. Provisioning and other control-plane calls always use SigV4.
 
-#### Bearer token security (bring-your-own)
+#### Bearer token security (bring-your-own JWT)
 
-The node does **not** mint, exchange, or derive the bearer token — it is
-strictly **bring-your-own**. You supply a token (a JWT from your harness's
-configured identity provider, or a token produced by AWS's token generator) and
-the node passes it through verbatim as the `Authorization: Bearer …` header. It
-is read per-execution from a password-masked field and is never logged or
-persisted by the node. Because you own the token, follow these practices:
+This path is for harnesses configured with an **inbound JWT (OIDC) authorizer**
+only. The token is a **JWT issued by your identity provider** (e.g. Amazon
+Cognito or any OIDC IdP), not an AWS SigV4 / Bedrock API key. The node does
+**not** mint, exchange, or derive it — it is strictly **bring-your-own**: you
+supply the JWT and the node passes it through verbatim as the
+`Authorization: Bearer …` header. It is read per-execution from a
+password-masked field and is never logged or persisted by the node. Because you
+own the token, follow these practices:
 
-- **Prefer short-lived tokens.** Generate them per workflow run from an upstream
-  auth step (e.g. an OIDC/Cognito login node, or AWS's
-  [short-term Bedrock API key generator](https://docs.aws.amazon.com/bedrock/latest/userguide/api-keys-generate.html#api-keys-generate-short-term))
-  rather than pasting a long-lived token into the field. AWS strongly recommends
-  short-term credentials over long-term keys — see
-  [Alternatives to long-term access keys](https://docs.aws.amazon.com/IAM/latest/UserGuide/security-creds-programmatic-access.html#security-creds-alternatives-to-long-term-access-keys).
-- **Scope to the minimum.** The principal/identity behind the token (and the
-  harness's inbound authorizer — allowed audiences, clients, scopes) should grant
-  only the harness invoke actions needed, not broad Bedrock or account access.
-  Restrict at the IdP/authorizer and the IAM policy backing the token.
-- **Plan for revocation and expiry.** Use tokens with a short TTL so a leaked
-  token has a small window; revoke at the IdP (or delete the issuing
-  credential/IAM principal) if a token is exposed. Don't hard-code tokens in
-  saved workflows — bind them from a credential or an upstream auth node so they
-  rotate automatically.
+- **Use short-lived JWTs from your IdP.** Obtain the token per workflow run from
+  an upstream auth step (e.g. a Cognito/OIDC login node) rather than pasting a
+  long-lived token into the field. Configure a short token TTL at the IdP so a
+  leaked token has a small exposure window.
+- **Constrain the authorizer.** Configure the harness's inbound JWT authorizer
+  to validate allowed audiences, allowed client IDs, and required scopes, so only
+  tokens minted for this harness are accepted. See
+  [inbound JWT authorizer](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/inbound-jwt-authorizer.html).
+- **Plan for revocation and rotation.** Revoke at the IdP (rotate signing keys,
+  revoke the session/refresh token, or disable the client) if a token is
+  exposed. Don't hard-code tokens in saved workflows — bind them from an upstream
+  auth node so they refresh automatically and never persist in the workflow JSON.
 - **Treat the token as a secret in your workflow.** If it flows through other
   nodes, avoid logging it; the node itself masks and never persists it.
 
+For the full inbound-OAuth setup and how end-user identity threads through to
+downstream tools, see
+[AgentCore Identity](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/identity.html)
+and the
+[AgentCore harness security guide](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/harness-security.html).
 If you don't need per-user identity propagation, the default **AWS SigV4** path
 (IAM credentials from the n8n credential vault) is simpler and avoids handling
 tokens entirely.
