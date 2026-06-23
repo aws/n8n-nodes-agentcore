@@ -46,8 +46,11 @@ export function resolveMemoryMode(input: MemoryInput): MemoryMode {
 	return input.mode;
 }
 
-/** Builds the bare union for CreateHarness (no optionalValue wrapper). */
-export function buildMemoryConfig(input: MemoryInput): IDataObject | undefined {
+/**
+ * Builds the bare union for CreateHarness (no optionalValue wrapper). Always
+ * returns a config — every mode (managed/byoArn/disabled) maps to a union member.
+ */
+export function buildMemoryConfig(input: MemoryInput): IDataObject {
 	const mode = resolveMemoryMode(input);
 
 	switch (mode) {
@@ -79,8 +82,6 @@ export function buildMemoryConfig(input: MemoryInput): IDataObject | undefined {
 }
 
 /** Wraps the union in the optionalValue envelope UpdateHarness requires. */
-export function buildMemoryUpdate(input: MemoryInput): IDataObject | undefined {
-	const value = buildMemoryConfig(input);
-	if (value === undefined) return undefined;
-	return { optionalValue: value };
+export function buildMemoryUpdate(input: MemoryInput): IDataObject {
+	return { optionalValue: buildMemoryConfig(input) };
 }
