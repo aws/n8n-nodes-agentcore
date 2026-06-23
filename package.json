@@ -1,7 +1,7 @@
 {
   "name": "@aws/n8n-nodes-agentcore",
-  "version": "0.1.0",
-  "description": "n8n community node for Amazon Bedrock AgentCore Harness. Run production-grade AI agents with isolated microVMs, real browsers, real code execution, and persistent memory — directly from your n8n workflows.",
+  "version": "0.2.0",
+  "description": "n8n community node for Amazon Bedrock AgentCore harness. Run production-grade AI agents with isolated microVMs, real browsers, real code execution, and persistent memory — directly from your n8n workflows.",
   "keywords": [
     "n8n-community-node-package",
     "n8n",
@@ -65,8 +65,8 @@
     "typescript": "^5.4.0"
   },
   "dependencies": {
-    "@aws-sdk/client-bedrock-agentcore": "^3.1058.0",
-    "@aws-sdk/client-bedrock-agentcore-control": "^3.1058.0"
+    "@aws-sdk/client-bedrock-agentcore": "^3.1071.0",
+    "@aws-sdk/client-bedrock-agentcore-control": "^3.1071.0"
   },
   "peerDependencies": {
     "n8n-workflow": "*"

@@ -1,0 +1,67 @@
+{
+	"name": "AgentCore — OAuth Bearer Invoke",
+	"nodes": [
+		{
+			"parameters": {
+				"httpMethod": "POST",
+				"path": "agentcore-oauth",
+				"options": {}
+			},
+			"id": "1",
+			"name": "Webhook",
+			"type": "n8n-nodes-base.webhook",
+			"typeVersion": 2,
+			"position": [240, 300]
+		},
+		{
+			"parameters": {
+				"method": "POST",
+				"url": "https://cognito-idp.us-west-2.amazonaws.com/",
+				"sendHeaders": true,
+				"headerParameters": {
+					"parameters": [
+						{ "name": "Content-Type", "value": "application/x-amz-json-1.1" },
+						{ "name": "X-Amz-Target", "value": "AWSCognitoIdentityProviderService.InitiateAuth" }
+					]
+				},
+				"sendBody": true,
+				"specifyBody": "json",
+				"jsonBody": "={\n  \"AuthFlow\": \"USER_PASSWORD_AUTH\",\n  \"ClientId\": \"<COGNITO_APP_CLIENT_ID>\",\n  \"AuthParameters\": {\n    \"USERNAME\": \"{{ $json.body.username }}\",\n    \"PASSWORD\": \"{{ $json.body.password }}\"\n  }\n}",
+				"options": {}
+			},
+			"id": "2",
+			"name": "Get Cognito Token",
+			"type": "n8n-nodes-base.httpRequest",
+			"typeVersion": 4,
+			"position": [480, 300]
+		},
+		{
+			"parameters": {
+				"harnessArn": "arn:aws:bedrock-agentcore:us-west-2:123456789012:harness/OAuthHarness-abc1234567",
+				"prompt": "={{ $('Webhook').item.json.body.message }}",
+				"authentication": "oauthBearer",
+				"bearerToken": "={{ $json.AuthenticationResult.IdToken }}",
+				"sessionId": "={{ $('Webhook').item.json.body.sessionId }}"
+			},
+			"id": "3",
+			"name": "Invoke with Bearer",
+			"type": "@aws/n8n-nodes-agentcore.agentCoreHarness",
+			"typeVersion": 1,
+			"position": [720, 300],
+			"credentials": { "agentCoreApi": { "id": "1", "name": "AgentCore creds" } }
+		},
+		{
+			"parameters": { "options": {} },
+			"id": "4",
+			"name": "Respond",
+			"type": "n8n-nodes-base.respondToWebhook",
+			"typeVersion": 1,
+			"position": [960, 300]
+		}
+	],
+	"connections": {
+		"Webhook": { "main": [[{ "node": "Get Cognito Token", "type": "main", "index": 0 }]] },
+		"Get Cognito Token": { "main": [[{ "node": "Invoke with Bearer", "type": "main", "index": 0 }]] },
+		"Invoke with Bearer": { "main": [[{ "node": "Respond", "type": "main", "index": 0 }]] }
+	}
+}

@@ -61,7 +61,38 @@ export class AgentCoreApi implements ICredentialType {
 			required: true,
 			placeholder: 'arn:aws:iam::123456789012:role/HarnessExecutionRole',
 			description:
-				'IAM role the Harness assumes when running. Must trust the bedrock-agentcore.amazonaws.com service principal. See the README for the trust policy and minimum permissions.',
+				'IAM role the harness assumes when running. Must trust the bedrock-agentcore.amazonaws.com service principal. See the README for the trust policy and minimum permissions.',
+		},
+		{
+			displayName: 'Network Mode',
+			name: 'networkMode',
+			type: 'options',
+			options: [
+				{ name: 'Public (Default)', value: 'PUBLIC' },
+				{ name: 'VPC', value: 'VPC' },
+			],
+			default: 'PUBLIC',
+			description:
+				'Network mode for harnesses this credential provisions. Public runs on the AgentCore-managed network. VPC runs the harness in your VPC — required for EFS / S3 Files mounts and private-resource access. Applies only to auto-provisioned harnesses (blank Harness ARN).',
+		},
+		{
+			displayName: 'VPC Subnet IDs',
+			name: 'subnetIds',
+			type: 'string',
+			default: '',
+			placeholder: 'subnet-0abc123,subnet-0def456',
+			displayOptions: { show: { networkMode: ['VPC'] } },
+			description:
+				'Comma-separated subnet IDs for VPC mode. The VPC must have a NAT gateway with an internet route (AgentCore pulls its container from public.ecr.aws, which does not support VPC endpoints).',
+		},
+		{
+			displayName: 'VPC Security Group IDs',
+			name: 'securityGroupIds',
+			type: 'string',
+			default: '',
+			placeholder: 'sg-0abc123',
+			displayOptions: { show: { networkMode: ['VPC'] } },
+			description: 'Comma-separated security group IDs for VPC mode',
 		},
 	];
 }

@@ -1,0 +1,51 @@
+{
+	"name": "AgentCore — VPC Harness with EFS Mount",
+	"nodes": [
+		{
+			"parameters": {},
+			"id": "1",
+			"name": "Manual Trigger",
+			"type": "n8n-nodes-base.manualTrigger",
+			"typeVersion": 1,
+			"position": [240, 300]
+		},
+		{
+			"parameters": {
+				"agentName": "vpc_data_agent",
+				"modelProvider": "bedrock",
+				"modelId": "global.anthropic.claude-sonnet-4-6",
+				"systemPrompt": "You analyze shared datasets stored on the mounted EFS volume at /mnt/efs.",
+				"prompt": "List the CSV files under /mnt/efs and summarize the largest one.",
+				"tools": {
+					"tool": [{ "type": "agentcore_code_interpreter", "name": "code_interpreter" }]
+				},
+				"provisioningOptions": {
+					"memoryMode": "managed",
+					"filesystemMounts": {
+						"mount": [
+							{
+								"type": "efsAccessPoint",
+								"mountPath": "/mnt/efs",
+								"accessPointArn": "arn:aws:elasticfilesystem:us-west-2:123456789012:access-point/fsap-0123456789abcdef0"
+							}
+						]
+					}
+				},
+				"additionalOptions": {
+					"timeoutSeconds": 600
+				}
+			},
+			"id": "2",
+			"name": "VPC Data Agent",
+			"type": "@aws/n8n-nodes-agentcore.agentCoreHarness",
+			"typeVersion": 1,
+			"position": [480, 300],
+			"credentials": { "agentCoreApi": { "id": "1", "name": "AgentCore creds (VPC mode)" } }
+		}
+	],
+	"connections": {
+		"Manual Trigger": {
+			"main": [[{ "node": "VPC Data Agent", "type": "main", "index": 0 }]]
+		}
+	}
+}
