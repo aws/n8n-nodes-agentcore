@@ -24,7 +24,7 @@ n8n’s native AI Agent node is great for simple agents, but hits walls fast: no
 - **Bring your own harness** — Paste a harness ARN (deployed via CLI / CloudFormation / console / Terraform) to invoke it directly, with any config field acting as a per-invocation override
 - **Multi-provider models** (v0.2) — Amazon Bedrock (native), OpenAI, Google Gemini, and LiteLLM, switchable per invocation
 - **Managed memory** (v0.2) — auto-provisioned AgentCore Memory with configurable strategies, or bring your own Memory ARN, or disable it
-- **Inline tool configuration** — AgentCore Browser, Code Interpreter, Web Search, Gateway (with optional OAuth outbound auth), remote MCP servers, and inline functions
+- **Inline tool configuration** — AgentCore Browser, Code Interpreter, Gateway (with optional OAuth outbound auth), remote MCP servers, and inline functions
 - **Skills** (v0.2) — AWS curated catalog, Git, S3, and filesystem-path sources
 - **VPC, custom containers, and filesystem mounts** (v0.2) — run in your VPC, bring a linux/arm64 ECR image, mount session storage / EFS / S3 Files
 - **OAuth Bearer invoke** (v0.2) — invoke inbound-OAuth harnesses with a JWT from an upstream node
@@ -202,9 +202,12 @@ So: short-term continuity needs a stable **Session ID**; long-term recall needs
 
 ### Tools & skills
 
-Tools now include **Web Search** (managed, no setup), **Gateway** with optional
-OAuth outbound auth, and **Inline Functions**. **Skills** load domain knowledge
-on demand from the AWS catalog (glob patterns), Git, S3, or a filesystem path.
+Tools now include **Gateway** with optional OAuth outbound auth and **Inline
+Functions**, alongside Browser, Code Interpreter, and remote MCP. **Skills** load
+domain knowledge on demand from the AWS catalog (glob patterns), Git, S3, or a
+filesystem path. (Need web search? Point a Remote MCP tool at a search MCP
+server — a managed `agentcore_web_search` type is documented by AgentCore but not
+yet accepted by the harness API.)
 
 #### Inline-function round-trip
 
@@ -222,6 +225,14 @@ Set **Network Mode = VPC** (plus subnets and security groups) on the credential
 to run harnesses in your VPC. Provisioning Options add a **Container Image URI**
 (linux/arm64 ECR) and **Filesystem Mounts** (session storage with no VPC; EFS and
 S3 Files access points require VPC).
+
+> **VPC requirements:** the subnets you provide must route `0.0.0.0/0` to a **NAT
+> gateway** — the harness pulls its container from `public.ecr.aws` at session
+> start, and ECR Public has no VPC endpoint, so a NAT-less/isolated subnet causes
+> image-pull timeouts. **First creation of a VPC harness is slow** (network
+> interface provisioning + container pull through the NAT can take several
+> minutes); the node waits up to 10 minutes. Subsequent runs reuse the harness
+> and return in seconds.
 
 ### OAuth Bearer invoke
 
@@ -394,7 +405,7 @@ The package name `@aws/n8n-nodes-agentcore` matches n8n’s required
 |Version           |Capability                                                                                       |
 |------------------|-------------------------------------------------------------------------------------------------|
 |**v0.1**          |Run Agent, Invoke Existing, MCP / Browser / Code Interpreter / Gateway tools, streaming, sessions|
-|**v0.2** (current)|Multi-provider models, managed memory, VPC, custom containers, filesystem mounts, skills, inline functions, web search, OAuth Bearer invoke, versions & endpoints|
+|**v0.2** (current)|Multi-provider models, managed memory, VPC, custom containers, filesystem mounts, skills, inline functions, OAuth Bearer invoke, versions & endpoints|
 |**later**         |ExecuteCommand (shell) with Bearer, custom Browser/Code Interpreter resources, CloudFormation quick-create, Export to Code, Step Functions|
 
 ## Limitations (v0.2)
@@ -419,7 +430,7 @@ The package name `@aws/n8n-nodes-agentcore` matches n8n’s required
 | **The agent doesn't remember previous turns** | The **Session ID** was left blank, so each run is a new conversation (output shows `sessionSource: "generated"`). Set a stable Session ID and reuse it across runs. See [Memory & sessions](#memory--sessions). |
 | **`AccessDenied` / `not authorized to perform` on the first run** | Either the **Bedrock model isn't enabled** (Bedrock console → Model access), or the **execution role is missing a scoped action** for the feature you used (e.g. `bedrock-mantle:CreateInference` for Mantle models, token-vault read for OpenAI/Gemini keys, `InvokeGateway` for gateways). See [IAM setup](#iam-setup). |
 | **First run hangs for ~30 seconds** | Expected — the node is creating the harness on first use. Subsequent runs reuse it and return in a few seconds. |
-| **VPC harness fails / sessions time out on start** | The harness pulls its container from `public.ecr.aws`, which has no VPC endpoint. The subnet you configured must route `0.0.0.0/0` to a **NAT gateway** (→ internet gateway). Fix the route table or use a NAT-routed subnet. |
+| **"Harness … did not reach READY within …" on a VPC harness** | VPC harness creation is slow (ENI provisioning + container pull through the NAT). The node now waits up to 10 minutes; if you still see this, the harness is often **still creating** — re-run the node shortly and it will find the now-READY harness and invoke it. A *persistent* failure (or `CREATE_FAILED`) points at egress: the subnet must route `0.0.0.0/0` to a **NAT gateway** (ECR Public has no VPC endpoint). Fix the route table or use a NAT-routed subnet. |
 | **OpenAI / Gemini model errors about a missing key** | Direct OpenAI/Gemini require an **API Key ARN** (a token-vault credential provider) in Model Options. To use OpenAI-style models without a key, pick the **Bedrock** provider with API Format `Responses`/`Chat Completions` and a Mantle model id. |
 | **Two "Amazon Bedrock AgentCore" nodes in the palette** | A leftover/older install. Remove the stale package from `~/.n8n/nodes` (or `~/.n8n/custom`), then fully restart n8n and open a fresh browser tab. |
 | **OAuth invoke returns 401 / Unauthorized** | The harness needs an **inbound JWT authorizer** configured, and the Bearer Token must be a valid, unexpired JWT from that IdP whose `aud`/`client_id`/scopes satisfy the authorizer. See [OAuth Bearer invoke](#oauth-bearer-invoke). |

@@ -100,7 +100,7 @@ See [memory & sessions](../README.md#memory--sessions) in the README.)
 
 ## Where to go next
 
-- **Tools** — add a Web Search or Code Interpreter tool to the node.
+- **Tools** — add a Code Interpreter, Browser, or remote MCP tool to the node.
 - **Other models** — switch Model Provider to OpenAI / Gemini / LiteLLM (needs an
   API key ARN), or use Bedrock Mantle without a key.
 - **Examples** — import any workflow from [`examples/`](../examples).

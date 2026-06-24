@@ -31,7 +31,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Inline functions** — new tool type; the node surfaces `stopReason: tool_use`
   with parsed tool inputs and a Tool Results field to send results back over the
   same session.
-- **AgentCore Web Search** — managed `agentcore_web_search` tool type, no setup.
 - **OAuth Bearer invoke** — Authentication selector with an operation-level
   Bearer Token field. Uses a raw HTTPS request and an event-stream decoder
   (`@smithy/core/event-streams`) because the AWS SDK cannot Bearer-auth
@@ -50,6 +49,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   instead of cascade-deleting it.
 - Config-drift hash extended to cover model union, memory, skills, environment,
   and container so changes to any of them trigger an UpdateHarness.
+- Harness-ready polling timeout raised from 180s to 600s. VPC harness creation
+  (network-interface provisioning + container pull through the NAT) can take
+  several minutes; the shorter timeout reported a misleading "did not reach
+  READY" error on harnesses that were still creating.
 
 ### Migration
 

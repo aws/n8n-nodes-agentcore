@@ -21,12 +21,12 @@ export interface ToolConfig {
  *   - agentcore_gateway        (+ optional OAuth outbound auth)
  *   - remote_mcp
  *   - inline_function          (client-side execution; round-trips via toolResult)
- *   - agentcore_web_search     (managed; no config)
  *
- * NOTE (TODO(v0.2-question-5)): `agentcore_web_search` is documented in the GA
- * dev guide but is not yet in the SDK's HarnessToolType enum. The SDK schema
- * serializes `HarnessTool.type` as a plain string (verified in schemas_0.js),
- * so the raw value is sent verbatim and accepted by the service.
+ * Note: `agentcore_web_search` is described in the developer guide but is not yet
+ * accepted by the Create/Update/Invoke Harness APIs (the service enum rejects it
+ * with a ValidationException), so it is intentionally not offered here. Web
+ * search can still be added today via a Remote MCP search server. Re-add the
+ * managed type once the harness API enum includes it.
  */
 export function buildToolsArray(toolsUi: IDataObject | undefined): ToolConfig[] {
 	if (!toolsUi || !toolsUi.tool) {
@@ -51,14 +51,6 @@ export function buildToolsArray(toolsUi: IDataObject | undefined): ToolConfig[] 
 				tools.push({
 					type: 'agentcore_code_interpreter',
 					name: (uiTool.name as string) || 'code_interpreter',
-				});
-				break;
-
-			case 'agentcore_web_search':
-				// Managed web search via Gateway, no setup required. No config.
-				tools.push({
-					type: 'agentcore_web_search',
-					name: (uiTool.name as string) || 'web_search',
 				});
 				break;
 

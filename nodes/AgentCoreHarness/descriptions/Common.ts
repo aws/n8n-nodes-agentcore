@@ -6,11 +6,11 @@ import type { INodeProperties } from 'n8n-workflow';
 
 /**
  * Tool collection field. Used by both auto-provisioned and BYO-ARN modes.
- * v0.2 supports: AgentCore Browser, Code Interpreter, Web Search, Gateway
- * (with optional OAuth outbound auth), Remote MCP, and inline functions.
+ * v0.2 supports: AgentCore Browser, Code Interpreter, Gateway (with optional
+ * OAuth outbound auth), Remote MCP, and inline functions.
  *
  * Per-tool fields are shown/hidden by the selected Type so the form stays
- * legible across six tool types. Values are kept alphabetized by displayName to
+ * legible across the tool types. Values are kept alphabetized by displayName to
  * satisfy eslint-plugin-n8n-nodes-base.
  */
 export const toolsField: INodeProperties = {
@@ -118,7 +118,6 @@ export const toolsField: INodeProperties = {
 						{ name: 'AgentCore Browser', value: 'agentcore_browser' },
 						{ name: 'AgentCore Code Interpreter', value: 'agentcore_code_interpreter' },
 						{ name: 'AgentCore Gateway', value: 'agentcore_gateway' },
-						{ name: 'AgentCore Web Search', value: 'agentcore_web_search' },
 						{ name: 'Inline Function', value: 'inline_function' },
 						{ name: 'Remote MCP Server', value: 'remote_mcp' },
 					],
