@@ -31,7 +31,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Inline functions** — new tool type; the node surfaces `stopReason: tool_use`
   with parsed tool inputs and a Tool Results field to send results back over the
   same session.
-- **AgentCore Web Search** — managed `agentcore_web_search` tool type, no setup.
 - **OAuth Bearer invoke** — Authentication selector with an operation-level
   Bearer Token field. Uses a raw HTTPS request and an event-stream decoder
   (`@smithy/core/event-streams`) because the AWS SDK cannot Bearer-auth

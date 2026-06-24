@@ -24,7 +24,7 @@ n8n’s native AI Agent node is great for simple agents, but hits walls fast: no
 - **Bring your own harness** — Paste a harness ARN (deployed via CLI / CloudFormation / console / Terraform) to invoke it directly, with any config field acting as a per-invocation override
 - **Multi-provider models** (v0.2) — Amazon Bedrock (native), OpenAI, Google Gemini, and LiteLLM, switchable per invocation
 - **Managed memory** (v0.2) — auto-provisioned AgentCore Memory with configurable strategies, or bring your own Memory ARN, or disable it
-- **Inline tool configuration** — AgentCore Browser, Code Interpreter, Web Search, Gateway (with optional OAuth outbound auth), remote MCP servers, and inline functions
+- **Inline tool configuration** — AgentCore Browser, Code Interpreter, Gateway (with optional OAuth outbound auth), remote MCP servers, and inline functions
 - **Skills** (v0.2) — AWS curated catalog, Git, S3, and filesystem-path sources
 - **VPC, custom containers, and filesystem mounts** (v0.2) — run in your VPC, bring a linux/arm64 ECR image, mount session storage / EFS / S3 Files
 - **OAuth Bearer invoke** (v0.2) — invoke inbound-OAuth harnesses with a JWT from an upstream node
@@ -202,9 +202,12 @@ So: short-term continuity needs a stable **Session ID**; long-term recall needs
 
 ### Tools & skills
 
-Tools now include **Web Search** (managed, no setup), **Gateway** with optional
-OAuth outbound auth, and **Inline Functions**. **Skills** load domain knowledge
-on demand from the AWS catalog (glob patterns), Git, S3, or a filesystem path.
+Tools now include **Gateway** with optional OAuth outbound auth and **Inline
+Functions**, alongside Browser, Code Interpreter, and remote MCP. **Skills** load
+domain knowledge on demand from the AWS catalog (glob patterns), Git, S3, or a
+filesystem path. (Need web search? Point a Remote MCP tool at a search MCP
+server — a managed `agentcore_web_search` type is documented by AgentCore but not
+yet accepted by the harness API.)
 
 #### Inline-function round-trip
 
@@ -394,7 +397,7 @@ The package name `@aws/n8n-nodes-agentcore` matches n8n’s required
 |Version           |Capability                                                                                       |
 |------------------|-------------------------------------------------------------------------------------------------|
 |**v0.1**          |Run Agent, Invoke Existing, MCP / Browser / Code Interpreter / Gateway tools, streaming, sessions|
-|**v0.2** (current)|Multi-provider models, managed memory, VPC, custom containers, filesystem mounts, skills, inline functions, web search, OAuth Bearer invoke, versions & endpoints|
+|**v0.2** (current)|Multi-provider models, managed memory, VPC, custom containers, filesystem mounts, skills, inline functions, OAuth Bearer invoke, versions & endpoints|
 |**later**         |ExecuteCommand (shell) with Bearer, custom Browser/Code Interpreter resources, CloudFormation quick-create, Export to Code, Step Functions|
 
 ## Limitations (v0.2)

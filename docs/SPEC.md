@@ -22,7 +22,7 @@ The node auto-provisions a harness on first execution, reuses it on subsequent r
 
 - One n8n node (`AgentCoreHarness`) with a single operation; the Harness ARN field selects between auto-provision and bring-your-own-ARN behavior
 - One credential type (`AgentCoreApi`) reusing n8n’s standard AWS credential pattern, extended with optional VPC network config
-- Inline tool configuration for AgentCore-native tools: Browser, Code Interpreter, Gateway (with optional OAuth outbound auth), remote MCP, **Web Search**, and **inline functions**
+- Inline tool configuration for AgentCore-native tools: Browser, Code Interpreter, Gateway (with optional OAuth outbound auth), remote MCP, and **inline functions**
 - **Multi-provider models** — Amazon Bedrock (native + Mantle), OpenAI, Google Gemini, LiteLLM — switchable per invocation
 - **Managed memory auto-provisioning** (strategies + event expiry), with BYO-Memory-ARN and Disabled modes
 - **Skills** from the AWS curated catalog, Git, S3, and filesystem paths
@@ -119,7 +119,7 @@ A single operation. The **Harness ARN** field is the mode discriminator: blank �
 |Model Options       |collection|no            |always    |API Key ARN, API Base URL, API Format, temperature, topP/K, model max tokens, additionalParams (JSON).         |
 |System Prompt       |string    |no            |always    |Agent instructions. Run mode: defaults if blank. Invoke mode: override if set.                                 |
 |Prompt              |string    |no            |always    |User message (n8n expressions supported). Optional only when sending Tool Results back.                        |
-|Tools               |collection|no            |always    |Browser, Code Interpreter, Gateway (+OAuth), remote MCP, Web Search, inline functions. Invoke mode: override.  |
+|Tools               |collection|no            |always    |Browser, Code Interpreter, Gateway (+OAuth), remote MCP, inline functions. Invoke mode: override.             |
 |Skills              |collection|no            |always    |AWS catalog (globs) / Git / S3 / filesystem path. Run mode: baked in. Invoke mode: appended (invoke wins).     |
 |Session ID          |string    |no            |always    |For multi-turn continuity. Auto-generated (random UUID) when blank; stable value continues a conversation.     |
 |Authentication      |options   |no            |always    |AWS SigV4 (default) or OAuth Bearer Token. OAuth uses the raw-HTTPS invoke path.                                |
@@ -298,7 +298,7 @@ AWS setup runbook are maintained by the team outside the published package.
 3. Re-run same workflow — fast reuse, same harness ID
 4. Modify system prompt/model/tools — `UpdateHarness`, new version, response reflects update
 5. Multi-turn with a stable session ID — second turn recalls the first (`sessionSource: provided`, higher inputTokens)
-6. Tools: MCP, Code Interpreter, Browser, Web Search — agent uses the tool
+6. Tools: MCP, Code Interpreter, Browser — agent uses the tool
 7. Multi-provider: OpenAI/Gemini/LiteLLM, and a mid-session provider switch
 8. Inline function — `stopReason: tool_use` then Tool Results round-trip
 9. Skills (AWS catalog / Git / S3), VPC harness, custom container, filesystem mount
@@ -357,4 +357,4 @@ default model is Claude Sonnet 4.6.
 |Version|Date             |Notes                                                                                                               |
 |-------|-----------------|--------------------------------------------------------------------------------------------------------------------|
 |0.1.0  |TBD (pre-release)|Initial release: single operation (auto-provision or bring-your-own-ARN), MCP/Browser/Code Interpreter/Gateway tools|
-|0.2.0  |TBD (pre-release)|Multi-provider models, managed memory, VPC, custom containers, filesystem mounts, skills, inline functions, web search, OAuth Bearer invoke, versions & endpoints. SDK bumped to ^3.1071.0.|
+|0.2.0  |TBD (pre-release)|Multi-provider models, managed memory, VPC, custom containers, filesystem mounts, skills, inline functions, OAuth Bearer invoke, versions & endpoints. SDK bumped to ^3.1071.0.|
