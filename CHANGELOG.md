@@ -49,6 +49,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   instead of cascade-deleting it.
 - Config-drift hash extended to cover model union, memory, skills, environment,
   and container so changes to any of them trigger an UpdateHarness.
+- Harness-ready polling timeout raised from 180s to 600s. VPC harness creation
+  (network-interface provisioning + container pull through the NAT) can take
+  several minutes; the shorter timeout reported a misleading "did not reach
+  READY" error on harnesses that were still creating.
 
 ### Migration
 

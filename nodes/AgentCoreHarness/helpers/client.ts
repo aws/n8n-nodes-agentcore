@@ -57,12 +57,17 @@ function splitList(raw: string | undefined): string[] {
 
 /**
  * Polls GetHarness until READY or a terminal failure state.
- * Default timeout 180 seconds matches typical harness creation time.
+ * Default timeout 600 seconds (10 min): public harnesses are ready in ~30s, but
+ * VPC harnesses take materially longer — AWS provisions network interfaces in
+ * your subnets and pulls the container from public.ecr.aws through your NAT,
+ * which can exceed several minutes. A short timeout surfaced a misleading
+ * "did not reach READY" error on VPC harnesses that were in fact still creating
+ * (and did become READY shortly after).
  */
 export async function waitForHarnessReady(
 	controlClient: any,
 	harnessId: string,
-	timeoutMs: number = 180_000,
+	timeoutMs: number = 600_000,
 ): Promise<{ status: string; failureReason?: string }> {
 	const { GetHarnessCommand } = await import('@aws-sdk/client-bedrock-agentcore-control');
 	const startedAt = Date.now();
