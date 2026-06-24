@@ -53,16 +53,16 @@
     ]
   },
   "devDependencies": {
-    "@secretlint/secretlint-rule-preset-recommend": "^9.0.0",
-    "@types/node": "^20.0.0",
-    "@typescript-eslint/parser": "^7.0.0",
-    "eslint": "^8.57.0",
-    "eslint-plugin-n8n-nodes-base": "^1.16.0",
+    "@secretlint/secretlint-rule-preset-recommend": "^13.0.2",
+    "@types/node": "^26.0.1",
+    "@typescript-eslint/parser": "^8.62.0",
+    "eslint": "^10.5.0",
+    "eslint-plugin-n8n-nodes-base": "^1.16.7",
     "gulp": "^5.0.0",
     "n8n-workflow": "*",
-    "prettier": "^3.2.0",
-    "secretlint": "^9.0.0",
-    "typescript": "^5.4.0"
+    "prettier": "^3.8.4",
+    "secretlint": "^13.0.2",
+    "typescript": "^6.0.3"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-agentcore": "^3.1075.0",
