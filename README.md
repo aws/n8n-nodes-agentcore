@@ -389,11 +389,18 @@ The package name `@aws/n8n-nodes-agentcore` matches n8n’s required
 > exist yet, so the initial `0.1.0` is published manually with a token. Every
 > release after that uses the workflow above.
 
-### Submit to the n8n community nodes registry
+### Discovery on n8n
 
-1. Fork [`n8n-io/n8n-docs`](https://github.com/n8n-io/n8n-docs)
-2. Add an entry in `docs/integrations/community-nodes/installation/`
-3. Open a pull request referencing the npm package
+n8n has no per-node registry in its docs — community nodes are discovered as npm
+packages. Once published, anyone can install this node via **Settings → Community
+Nodes** (or `npm install`) by package name.
+
+For in-editor discovery (the "More from the community" panel), submit the package
+for verification at the [n8n Creator Portal](https://creators.n8n.io/nodes).
+Verification has its own requirements (package-name prefix, the
+`n8n-community-node-package` keyword, npm provenance, and constraints on runtime
+dependencies and license) — review them before submitting; an AWS-SDK-backed,
+Apache-2.0 package may need clarification with n8n on those constraints.
 
 ### Announce
 
