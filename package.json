@@ -61,7 +61,7 @@
     "gulp": "^5.0.0",
     "n8n-workflow": "*",
     "prettier": "^3.2.0",
-    "secretlint": "^9.0.0",
+    "secretlint": "^13.0.2",
     "typescript": "^5.4.0"
   },
   "dependencies": {
