@@ -40,14 +40,23 @@ a working agent reply in ~5 minutes (install → credential → one prompt → m
 
 ## Installation
 
-### Via n8n UI (recommended)
+This node installs on **self-hosted n8n**. n8n Cloud only allows *verified*
+community nodes in its nodes panel; verification for this node is in progress
+(see [Discovery on n8n](#discovery-on-n8n)). If you run n8n Cloud today, you'll
+need a self-hosted instance to use this node.
 
-1. Open n8n
-2. **Settings → Community Nodes → Install a community node**
-3. Enter `@aws/n8n-nodes-agentcore`
-4. Accept the warning, click **Install**
+> New to self-hosting? You can run n8n locally with a single command
+> (`npx n8n`), or with Docker, or on a cloud provider. See the
+> [n8n self-hosting guide](https://docs.n8n.io/hosting/) for all options.
 
-### Manually
+### Via the n8n editor (self-hosted)
+
+1. Open your self-hosted n8n instance.
+2. Go to **Settings → Community Nodes → Install**.
+3. Enter `@aws/n8n-nodes-agentcore`.
+4. Acknowledge the community-node prompt, then choose **Install**.
+
+### Via npm (self-hosted)
 
 ```bash
 cd ~/.n8n
@@ -391,16 +400,17 @@ The package name `@aws/n8n-nodes-agentcore` matches n8n’s required
 
 ### Discovery on n8n
 
-n8n has no per-node registry in its docs — community nodes are discovered as npm
-packages. Once published, anyone can install this node via **Settings → Community
-Nodes** (or `npm install`) by package name.
+n8n has no per-node registry in its docs. Community nodes are discovered as npm
+packages, and installed on **self-hosted** n8n via **Settings → Community Nodes**
+(or `npm install`) by package name.
 
-For in-editor discovery (the "More from the community" panel), submit the package
-for verification at the [n8n Creator Portal](https://creators.n8n.io/nodes).
-Verification has its own requirements (package-name prefix, the
-`n8n-community-node-package` keyword, npm provenance, and constraints on runtime
-dependencies and license) — review them before submitting; an AWS-SDK-backed,
-Apache-2.0 package may need clarification with n8n on those constraints.
+Appearing in the in-editor nodes panel, and installing on **n8n Cloud**, both
+require the node to be **verified** through the
+[n8n Creator Portal](https://creators.n8n.io/nodes). n8n's verification currently
+requires an MIT license and no runtime dependencies. This node is Apache-2.0 and
+depends on the AWS SDK, so verification is not yet complete; it's tracked
+separately. Until then, use the node on self-hosted n8n as described in
+[Installation](#installation).
 
 ### Announce
 
