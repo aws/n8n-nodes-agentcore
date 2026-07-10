@@ -356,7 +356,7 @@ npm link @aws/n8n-nodes-agentcore
 npx n8n start
 ```
 
-Open `http://localhost:5678`. The **Amazon Bedrock AgentCore** node should appear in the node palette under the AI / AWS categories.
+Open `http://localhost:5678`. The **Amazon Bedrock AgentCore** node should appear in the node palette under the Development / Utility categories.
 
 ### Step 5 — Configure credentials and run an example
 
