@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 import type { ICredentialDataDecryptedObject } from 'n8n-workflow';
+import { sleep } from 'n8n-workflow';
 
 /**
  * Resolves AWS credentials from the n8n credential object into the
@@ -88,7 +89,7 @@ export async function waitForHarnessReady(
 			};
 		}
 
-		await new Promise((resolve) => setTimeout(resolve, pollInterval));
+		await sleep(pollInterval);
 	}
 
 	throw new Error(`Harness ${harnessId} did not reach READY within ${timeoutMs}ms`);
