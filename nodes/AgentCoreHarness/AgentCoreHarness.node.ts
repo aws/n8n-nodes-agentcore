@@ -94,17 +94,6 @@ export class AgentCoreHarness implements INodeType {
 		defaults: {
 			name: 'Amazon Bedrock AgentCore',
 		},
-		codex: {
-			categories: ['AI', 'AWS', 'Development'],
-			subcategories: {
-				AI: ['Agents'],
-				AWS: ['Bedrock'],
-			},
-			alias: ['agent', 'bedrock', 'agentcore', 'aws', 'llm', 'claude', 'anthropic'],
-			resources: {
-				primaryDocumentation: [{ url: 'https://github.com/aws/n8n-nodes-agentcore' }],
-			},
-		},
 		inputs: ['main'],
 		outputs: ['main'],
 		credentials: [

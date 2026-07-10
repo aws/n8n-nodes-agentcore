@@ -2,7 +2,8 @@
 	"node": "n8n-nodes-agentcore.agentCoreHarness",
 	"nodeVersion": "1.0",
 	"codexVersion": "1.0",
-	"categories": ["AI", "AWS"],
+	"categories": ["Development", "Utility"],
+	"alias": ["agent", "bedrock", "agentcore", "aws", "llm", "claude", "anthropic"],
 	"resources": {
 		"credentialDocumentation": [
 			{

@@ -137,9 +137,9 @@ These come directly from `docs/SPEC.md` §9 and are checked in
   Adding a new node or credential requires updating that field.
 - The icon (`agentcore.svg`) must be referenced as `file:agentcore.svg`
   in the node description; gulp copies it next to the compiled JS.
-- The codex metadata in `AgentCoreHarness.node.json` (and the in-class
-  `codex` field) controls how the node surfaces in the n8n node-palette
-  search and the AI/AWS category filters.
+- The codex metadata in `AgentCoreHarness.node.json` controls how the
+  node surfaces in the n8n node-palette search and the
+  Development/Utility category filters.
 - Use `INodeProperties` types from `n8n-workflow` for all field
   definitions. Avoid `as any` casts in field definitions - they break
   n8n's UI validation.
