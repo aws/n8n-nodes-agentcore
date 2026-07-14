@@ -1,6 +1,6 @@
 # @aws/n8n-nodes-agentcore
 
-An n8n community node for **Amazon Bedrock AgentCore harness**. Run production-grade AI agents with isolated microVMs, real browsers, real code execution, and persistent memory — directly from your n8n workflows.
+An n8n community node for **Amazon Bedrock AgentCore**. Run production-grade AI agents — both declarative Harness agents and containerized Runtime agents — directly from your n8n workflows.
 
 > Supported in the AgentCore regions us-east-1, us-west-2, ap-southeast-2, and
 > eu-central-1. Pin this package to a specific version in production and review
@@ -18,6 +18,15 @@ n8n’s native AI Agent node is great for simple agents, but hits walls fast: no
 |Session length|Workflow timeout   |Up to 8 hours per session                 |
 |Isolation     |Shared process     |Firecracker microVM per session           |
 
+## Nodes
+
+This package ships two nodes:
+
+| Node | Primitive | Use case |
+|---|---|---|
+| **Amazon Bedrock AgentCore** | Harness | Declarative agents with managed memory, browser, code interpreter, and VPC isolation |
+| **Amazon Bedrock AgentCore Runtime** | Runtime | Containerized agents invoked via `InvokeAgentRuntime` — bring your own Docker image |
+
 ## Features
 
 - **Auto-provision & reuse** — Leave the Harness ARN blank: the node creates a harness on first run, reuses it across executions, and updates it when configuration changes
@@ -32,6 +41,8 @@ n8n’s native AI Agent node is great for simple agents, but hits walls fast: no
 - **Streaming responses** with structured tool-use trace, token usage, and latency metadata
 - **Session persistence** — pass the same session ID across executions for multi-turn conversations
 - **Execution limits** — max iterations, max tokens, timeout
+- **AgentCore Runtime node** — invoke containerized Runtime agents with session management (`Auto`, `Provided`, `New` modes), stop sessions, and list all runtimes; the `sessionId` output field enables multi-agent chaining across nodes
+- **AssumeRole** — optional IAM role assumption on the credential (Role ARN + External ID + Session Duration) for cross-account and ECS task-role based workflows; applies to both Harness and Runtime nodes
 
 ## Quick start
 

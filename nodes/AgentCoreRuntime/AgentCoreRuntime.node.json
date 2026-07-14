@@ -1,0 +1,19 @@
+{
+	"node": "n8n-nodes-agentcore.agentCoreRuntime",
+	"nodeVersion": "1.0",
+	"codexVersion": "1.0",
+	"categories": ["Development", "Utility"],
+	"alias": ["agent", "runtime", "bedrock", "agentcore", "aws", "llm", "containerized"],
+	"resources": {
+		"credentialDocumentation": [
+			{
+				"url": "https://github.com/aws/n8n-nodes-agentcore#credentials"
+			}
+		],
+		"primaryDocumentation": [
+			{
+				"url": "https://github.com/aws/n8n-nodes-agentcore"
+			}
+		]
+	}
+}

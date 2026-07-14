@@ -1,0 +1,103 @@
+{
+  "name": "10 - AgentCore Runtime: Multi-Agent Chain",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "trigger-1",
+      "name": "When clicking 'Test workflow'",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { userQuery: 'Summarise the top AWS re:Invent 2025 announcements in 3 bullet points.' } }];"
+      },
+      "id": "set-input-1",
+      "name": "Set User Query",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "operation": "invoke",
+        "agentRuntimeArn": "arn:aws:bedrock-agentcore:us-west-2:123456789012:runtime/research-agent-id",
+        "sessionMode": "new",
+        "qualifier": "DEFAULT",
+        "payload": "={{ JSON.stringify({ prompt: 'Research: ' + $json.userQuery }) }}",
+        "accountId": ""
+      },
+      "id": "research-agent-1",
+      "name": "Research Agent",
+      "type": "n8n-nodes-agentcore.agentCoreRuntime",
+      "typeVersion": 1,
+      "position": [700, 300],
+      "credentials": {
+        "agentCoreApi": {
+          "id": "1",
+          "name": "AgentCore API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "invoke",
+        "agentRuntimeArn": "arn:aws:bedrock-agentcore:us-west-2:123456789012:runtime/writer-agent-id",
+        "sessionMode": "provided",
+        "invokeSessionId": "={{ $json.sessionId }}",
+        "qualifier": "DEFAULT",
+        "payload": "={{ JSON.stringify({ prompt: 'Rewrite this in a concise executive summary tone: ' + $json.response }) }}",
+        "accountId": ""
+      },
+      "id": "writer-agent-1",
+      "name": "Writer Agent",
+      "type": "n8n-nodes-agentcore.agentCoreRuntime",
+      "typeVersion": 1,
+      "position": [940, 300],
+      "credentials": {
+        "agentCoreApi": {
+          "id": "1",
+          "name": "AgentCore API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "stopSession",
+        "agentRuntimeArn": "arn:aws:bedrock-agentcore:us-west-2:123456789012:runtime/writer-agent-id",
+        "stopSessionId": "={{ $json.sessionId }}",
+        "qualifier": "DEFAULT"
+      },
+      "id": "stop-session-1",
+      "name": "Stop Session",
+      "type": "n8n-nodes-agentcore.agentCoreRuntime",
+      "typeVersion": 1,
+      "position": [1180, 300],
+      "credentials": {
+        "agentCoreApi": {
+          "id": "1",
+          "name": "AgentCore API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "When clicking 'Test workflow'": {
+      "main": [[{ "node": "Set User Query", "type": "main", "index": 0 }]]
+    },
+    "Set User Query": {
+      "main": [[{ "node": "Research Agent", "type": "main", "index": 0 }]]
+    },
+    "Research Agent": {
+      "main": [[{ "node": "Writer Agent", "type": "main", "index": 0 }]]
+    },
+    "Writer Agent": {
+      "main": [[{ "node": "Stop Session", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "meta": {
+    "instanceId": "example"
+  }
+}

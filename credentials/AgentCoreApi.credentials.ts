@@ -94,5 +94,40 @@ export class AgentCoreApi implements ICredentialType {
 			displayOptions: { show: { networkMode: ['VPC'] } },
 			description: 'Comma-separated security group IDs for VPC mode',
 		},
+		{
+			displayName: 'Assume IAM Role',
+			name: 'useAssumeRole',
+			type: 'boolean',
+			default: false,
+			description:
+				'Whether to assume an IAM role before making AWS API calls. Useful for cross-account access or ECS task-role based workflows.',
+		},
+		{
+			displayName: 'Role ARN',
+			name: 'roleArn',
+			type: 'string',
+			default: '',
+			placeholder: 'arn:aws:iam::123456789012:role/AgentCoreRuntimeRole',
+			displayOptions: { show: { useAssumeRole: [true] } },
+			description:
+				'ARN of the IAM role to assume. The base credentials must have sts:AssumeRole permission.',
+		},
+		{
+			displayName: 'External ID',
+			name: 'externalId',
+			type: 'string',
+			default: '',
+			displayOptions: { show: { useAssumeRole: [true] } },
+			description:
+				'Optional external ID required by the role trust policy (for cross-account scenarios).',
+		},
+		{
+			displayName: 'Session Duration (seconds)',
+			name: 'sessionDuration',
+			type: 'number',
+			default: 3600,
+			displayOptions: { show: { useAssumeRole: [true] } },
+			description: 'Duration in seconds for the assumed-role session. Minimum 900, maximum 43200.',
+		},
 	];
 }

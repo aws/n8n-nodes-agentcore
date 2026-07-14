@@ -18,6 +18,35 @@ export function getAwsCredentials(creds: ICredentialDataDecryptedObject) {
 	};
 }
 
+/**
+ * Like getAwsCredentials but also honours the optional AssumeRole fields
+ * (useAssumeRole / roleArn / externalId / sessionDuration) added to the
+ * credential in v0.3. Returns a plain credential object when AssumeRole is
+ * not configured, or a fromTemporaryCredentials provider when it is.
+ *
+ * The AWS SDK v3 client accepts both shapes for its `credentials` option.
+ */
+export async function buildAwsCredentials(creds: ICredentialDataDecryptedObject) {
+	const base = getAwsCredentials(creds);
+	const useAssumeRole = creds.useAssumeRole as boolean | undefined;
+	const roleArn = ((creds.roleArn as string | undefined) ?? '').trim();
+
+	if (!useAssumeRole || !roleArn) return base;
+
+	const { fromTemporaryCredentials } = await import('@aws-sdk/credential-providers');
+	const externalId = ((creds.externalId as string | undefined) ?? '').trim();
+	const durationSeconds = Number(creds.sessionDuration) || 3600;
+
+	return fromTemporaryCredentials({
+		masterCredentials: base,
+		params: {
+			RoleArn: roleArn,
+			...(externalId ? { ExternalId: externalId } : {}),
+			DurationSeconds: durationSeconds,
+		},
+	});
+}
+
 export function getRegion(creds: ICredentialDataDecryptedObject): string {
 	return (creds.region as string) || 'us-west-2';
 }
