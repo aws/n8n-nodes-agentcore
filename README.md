@@ -2,9 +2,10 @@
 
 An n8n community node for **Amazon Bedrock AgentCore harness**. Run production-grade AI agents with isolated microVMs, real browsers, real code execution, and persistent memory — directly from your n8n workflows.
 
-> Supported in the AgentCore regions us-east-1, us-west-2, ap-southeast-2, and
-> eu-central-1. Pin this package to a specific version in production and review
-> release notes before upgrading.
+> Available in the AWS Regions listed in the
+> [AgentCore Regions documentation](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/agentcore-regions.html).
+> Pin this package to a specific version in production and review release notes
+> before upgrading.
 
 ## Why this node?
 
@@ -68,7 +69,7 @@ npm install @aws/n8n-nodes-agentcore
 
 You need:
 
-1. **An AWS account** with Amazon Bedrock and AgentCore access in a supported region (us-east-1, us-west-2, ap-southeast-2, eu-central-1)
+1. **An AWS account** with Amazon Bedrock and AgentCore access in a supported region (see the [AgentCore Regions documentation](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/agentcore-regions.html))
 2. **AWS credentials** (access key + secret key) with the IAM policy below attached
 3. **An IAM execution role** that the harness assumes when running, with a trust policy and permissions described below
 4. **An enabled foundation model** in the Amazon Bedrock console (Claude Haiku, Sonnet, etc.)
