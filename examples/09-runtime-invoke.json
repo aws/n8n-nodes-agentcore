@@ -1,0 +1,69 @@
+{
+  "name": "09 - AgentCore Runtime: Invoke Agent",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "trigger-1",
+      "name": "When clicking 'Test workflow'",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { question: 'What is the current time in UTC?' } }];"
+      },
+      "id": "set-input-1",
+      "name": "Set Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "operation": "invoke",
+        "agentRuntimeArn": "arn:aws:bedrock-agentcore:us-west-2:123456789012:runtime/your-agent-id",
+        "sessionMode": "auto",
+        "qualifier": "DEFAULT",
+        "payload": "={{ JSON.stringify({ prompt: $json.question }) }}",
+        "accountId": ""
+      },
+      "id": "runtime-invoke-1",
+      "name": "AgentCore Runtime",
+      "type": "n8n-nodes-agentcore.agentCoreRuntime",
+      "typeVersion": 1,
+      "position": [700, 300],
+      "credentials": {
+        "agentCoreApi": {
+          "id": "1",
+          "name": "AgentCore API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nreturn [{\n  json: {\n    answer: item.response,\n    sessionId: item.sessionId,\n    latencyMs: item.latencyMs\n  }\n}];"
+      },
+      "id": "extract-output-1",
+      "name": "Extract Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [940, 300]
+    }
+  ],
+  "connections": {
+    "When clicking 'Test workflow'": {
+      "main": [[{ "node": "Set Input", "type": "main", "index": 0 }]]
+    },
+    "Set Input": {
+      "main": [[{ "node": "AgentCore Runtime", "type": "main", "index": 0 }]]
+    },
+    "AgentCore Runtime": {
+      "main": [[{ "node": "Extract Output", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "meta": {
+    "instanceId": "example"
+  }
+}

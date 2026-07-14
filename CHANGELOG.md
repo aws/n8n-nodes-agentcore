@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **AgentCoreRuntime node** — New `Amazon Bedrock AgentCore Runtime` node for invoking
+  containerized Runtime agents (`InvokeAgentRuntime`). Supports three operations:
+  - **Invoke Agent** — sends a JSON payload to a Runtime agent and returns the response text,
+    session ID, and latency. Session mode selector (`Auto`, `Provided`, `New`) enables
+    single-node persistence, multi-node chaining, and stateless calls.
+  - **Stop Session** — terminates a running Runtime session via `StopRuntimeSession`.
+  - **List Runtimes** — paginates `ListAgentRuntimes` and returns all runtimes as rows.
+- **AssumeRole support on the credential** — Optional "Assume IAM Role" toggle on the
+  `AgentCoreApi` credential. When enabled, exposes Role ARN, External ID, and Session
+  Duration fields and uses `fromTemporaryCredentials` (`@aws-sdk/credential-providers`)
+  to assume the role before every SDK call. Applies to both the Harness and Runtime nodes.
+
 ## [0.2.0] - 2026-06-24
 
 ### Added
