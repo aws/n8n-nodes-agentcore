@@ -1,9 +1,10 @@
 /*
  * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-License-Identifier: MIT
  */
 import type { ICredentialDataDecryptedObject } from 'n8n-workflow';
 import { sleep } from 'n8n-workflow';
+import type { ControlClient } from './controlClient';
 
 /**
  * Resolves AWS credentials from the n8n credential object into the
@@ -66,16 +67,15 @@ function splitList(raw: string | undefined): string[] {
  * (and did become READY shortly after).
  */
 export async function waitForHarnessReady(
-	controlClient: any,
+	controlClient: ControlClient,
 	harnessId: string,
 	timeoutMs: number = 600_000,
 ): Promise<{ status: string; failureReason?: string }> {
-	const { GetHarnessCommand } = await import('@aws-sdk/client-bedrock-agentcore-control');
 	const startedAt = Date.now();
 	const pollInterval = 3_000;
 
 	while (Date.now() - startedAt < timeoutMs) {
-		const response = await controlClient.send(new GetHarnessCommand({ harnessId }));
+		const response = await controlClient.getHarness(harnessId);
 		const harness = response.harness ?? {};
 		const status = harness.status as string | undefined;
 

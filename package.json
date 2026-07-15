@@ -13,10 +13,11 @@
     "agent",
     "llm"
   ],
-  "license": "Apache-2.0",
+  "license": "MIT",
   "homepage": "https://github.com/aws/n8n-nodes-agentcore",
   "author": {
-    "name": "Amazon Web Services"
+    "name": "Amazon Web Services",
+    "email": "open-source@amazon.com"
   },
   "repository": {
     "type": "git",
@@ -53,6 +54,8 @@
     ]
   },
   "devDependencies": {
+    "@aws-sdk/client-bedrock-agentcore": "^3.1075.0",
+    "@aws-sdk/client-bedrock-agentcore-control": "^3.1075.0",
     "@secretlint/secretlint-rule-preset-recommend": "^9.0.0",
     "@types/node": "^20.0.0",
     "@typescript-eslint/parser": "^7.0.0",
@@ -63,10 +66,6 @@
     "prettier": "^3.2.0",
     "secretlint": "^13.0.2",
     "typescript": "^5.4.0"
-  },
-  "dependencies": {
-    "@aws-sdk/client-bedrock-agentcore": "^3.1075.0",
-    "@aws-sdk/client-bedrock-agentcore-control": "^3.1075.0"
   },
   "peerDependencies": {
     "n8n-workflow": "*"
