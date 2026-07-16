@@ -18,8 +18,13 @@
  */
 import { controlRequest, type AwsCallerConfig } from './httpClient';
 
-const enc = (s: string) => encodeURIComponent(s);
-
+/**
+ * Path segments are passed through raw. The SigV4 signer (`sigv4.ts`,
+ * `encodePath`) is the single place that URI-encodes the path, so segments are
+ * encoded exactly once — matching how `@smithy/signature-v4` handles paths and
+ * avoiding double-encoding (e.g. a space becoming `%2520`). Callers must pass
+ * un-encoded identifiers.
+ */
 export class ControlClient {
 	constructor(private readonly config: AwsCallerConfig) {}
 
@@ -30,7 +35,7 @@ export class ControlClient {
 	async getHarness(harnessId: string): Promise<any> {
 		return controlRequest(this.config, {
 			method: 'GET',
-			path: `/harnesses/${enc(harnessId)}`,
+			path: `/harnesses/${harnessId}`,
 		});
 	}
 
@@ -40,7 +45,7 @@ export class ControlClient {
 		void _omit;
 		return controlRequest(this.config, {
 			method: 'PATCH',
-			path: `/harnesses/${enc(harnessId)}`,
+			path: `/harnesses/${harnessId}`,
 			body,
 		});
 	}
@@ -48,7 +53,7 @@ export class ControlClient {
 	async deleteHarness(harnessId: string, deleteManagedMemory = false): Promise<any> {
 		return controlRequest(this.config, {
 			method: 'DELETE',
-			path: `/harnesses/${enc(harnessId)}`,
+			path: `/harnesses/${harnessId}`,
 			query: { deleteManagedMemory: String(deleteManagedMemory) },
 		});
 	}
@@ -67,7 +72,7 @@ export class ControlClient {
 	): Promise<any> {
 		return controlRequest(this.config, {
 			method: 'GET',
-			path: `/harnesses/${enc(harnessId)}/versions`,
+			path: `/harnesses/${harnessId}/versions`,
 			query: { maxResults: input.maxResults, nextToken: input.nextToken },
 		});
 	}
@@ -78,7 +83,7 @@ export class ControlClient {
 	): Promise<any> {
 		return controlRequest(this.config, {
 			method: 'GET',
-			path: `/harnesses/${enc(harnessId)}/endpoints`,
+			path: `/harnesses/${harnessId}/endpoints`,
 			query: { maxResults: input.maxResults, nextToken: input.nextToken },
 		});
 	}
@@ -86,7 +91,7 @@ export class ControlClient {
 	async getHarnessEndpoint(harnessId: string, endpointName: string): Promise<any> {
 		return controlRequest(this.config, {
 			method: 'GET',
-			path: `/harnesses/${enc(harnessId)}/endpoints/${enc(endpointName)}`,
+			path: `/harnesses/${harnessId}/endpoints/${endpointName}`,
 		});
 	}
 
@@ -95,7 +100,7 @@ export class ControlClient {
 		void _omit;
 		return controlRequest(this.config, {
 			method: 'POST',
-			path: `/harnesses/${enc(harnessId)}/endpoints`,
+			path: `/harnesses/${harnessId}/endpoints`,
 			body,
 		});
 	}
@@ -110,7 +115,7 @@ export class ControlClient {
 		void _e;
 		return controlRequest(this.config, {
 			method: 'PATCH',
-			path: `/harnesses/${enc(harnessId)}/endpoints/${enc(endpointName)}`,
+			path: `/harnesses/${harnessId}/endpoints/${endpointName}`,
 			body,
 		});
 	}
