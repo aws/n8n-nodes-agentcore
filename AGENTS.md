@@ -75,18 +75,28 @@ The Run Agent lifecycle lives in `runAgent()` in
 source of truth, so static-data misses fall back to `ListHarnesses` before
 calling `CreateHarness`.
 
-## Build, lint, type-check
+## Build, lint, type-check, test
 
 ```
 npm run build         # tsc + gulp icon copy -> dist/
 npm run dev           # tsc --watch
 npm run lint          # eslint with eslint-plugin-n8n-nodes-base
 npm run typecheck     # tsc --noEmit (strict mode)
+npm test              # vitest run (unit tests under test/)
+npm run test:watch    # vitest in watch mode
 npm run format        # prettier --write
 npm run format:check  # prettier --check (used in CI)
 npm run security:audit  # npm audit --audit-level=high --omit=dev
 npm run secrets:check   # secretlint
 ```
+
+Unit tests live in `test/` and run with vitest. They are pure and offline
+(mocked `fetch`, fixture bytes) — no AWS credentials or network required — so
+they run in CI on every PR. The SigV4 signer (`helpers/sigv4.ts`), the
+event-stream decoder (`helpers/eventstream.ts`), and the config builders are
+directly unit-tested; keep them covered when changing behavior. vitest is a
+**dev dependency only** — it must never move to `dependencies`, since verified
+community nodes ship with zero runtime dependencies.
 
 Local testing against a real n8n is done via `npm link` into
 `~/.n8n/custom/`. See `README.md` "Local development" for the full flow.

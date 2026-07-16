@@ -329,13 +329,15 @@ cd n8n-nodes-agentcore
 npm install
 ```
 
-### Step 2 — Build
+### Step 2 — Build and test
 
 ```bash
 npm run build
+npm test
 ```
 
-This compiles TypeScript to `dist/` and copies the SVG icon.
+`npm run build` compiles TypeScript to `dist/` and copies the SVG icon. `npm
+test` runs the unit suite (vitest); it is offline and needs no AWS credentials.
 
 ### Step 3 — Link into a local n8n instance
 
