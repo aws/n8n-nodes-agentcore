@@ -71,6 +71,20 @@ jobs:
           key: node-modules-${{ hashFiles('package-lock.json') }}
       - run: npm run typecheck
 
+  test:
+    needs: setup
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20.x
+      - uses: actions/cache/restore@v6
+        with:
+          path: node_modules
+          key: node-modules-${{ hashFiles('package-lock.json') }}
+      - run: npm test
+
   security:
     needs: setup
     runs-on: ubuntu-latest
