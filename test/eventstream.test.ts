@@ -141,4 +141,17 @@ describe('eventstream — malformed input is rejected safely (T-N8N-017)', () =>
 		const events = await collect(streamOf(frame));
 		expect(events).toHaveLength(0);
 	});
+
+	it('throws on a truncated response (bytes left buffered at EOF)', async () => {
+		// One full frame followed by a partial second frame: the stream ends mid-frame.
+		const full = buildFrame({ ':message-type': 'event', ':event-type': 'contentBlockDelta' }, { delta: { text: 'ok' } });
+		const partial = buildFrame(
+			{ ':message-type': 'event', ':event-type': 'messageStop' },
+			{ stopReason: 'end_turn' },
+		).subarray(0, 20); // cut the second frame short
+		const merged = new Uint8Array(full.length + partial.length);
+		merged.set(full, 0);
+		merged.set(partial, full.length);
+		await expect(collect(streamOf(merged))).rejects.toThrow(/truncated response/i);
+	});
 });

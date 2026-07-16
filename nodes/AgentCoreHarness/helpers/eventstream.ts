@@ -88,6 +88,15 @@ export async function* decodeEventStream(
 				buffer = buffer.subarray(totalLength);
 			}
 		}
+
+		// A well-formed stream ends on a frame boundary. Leftover bytes mean the
+		// response was truncated mid-frame; surface that as an error rather than
+		// letting the caller treat a partial response as a complete result.
+		if (buffer.length > 0) {
+			throw new Error(
+				`event-stream: truncated response, ${buffer.length} trailing byte(s) after the last complete frame`,
+			);
+		}
 	} finally {
 		reader.releaseLock();
 	}
