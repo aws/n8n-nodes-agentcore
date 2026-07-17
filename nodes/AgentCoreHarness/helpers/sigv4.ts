@@ -66,6 +66,14 @@ function toAmzDate(iso: string): string {
 }
 
 /**
+ * Canonicalizes a header value for signing: trim leading/trailing whitespace and
+ * collapse internal runs of whitespace to a single space, per the SigV4 spec.
+ */
+function canonicalizeHeaderValue(value: string): string {
+	return value.trim().replace(/\s+/g, ' ');
+}
+
+/**
  * RFC 3986 encoding for a single URI path segment or query component. AWS
  * requires each path segment to be encoded but the `/` separators preserved,
  * and `encodeURIComponent` leaves `!*'()` unescaped, so we fix those up.
@@ -111,10 +119,12 @@ export function signRequest(request: SigV4Request, options: SigV4Options): Recor
 	const body = request.body ?? '';
 	const payloadHash = sha256Hex(body);
 
-	// Assemble the headers we sign. Header names are lower-cased for signing.
+	// Assemble the headers we sign. Header names are lower-cased, values are
+	// trimmed AND inner runs of whitespace are collapsed to a single space, per
+	// the SigV4 canonicalization rules for (unquoted) header values.
 	const headersToSign: Record<string, string> = {};
 	for (const [k, v] of Object.entries(request.headers)) {
-		headersToSign[k.toLowerCase()] = String(v).trim();
+		headersToSign[k.toLowerCase()] = canonicalizeHeaderValue(String(v));
 	}
 	headersToSign['host'] = url.host;
 	headersToSign['x-amz-date'] = amzDate;

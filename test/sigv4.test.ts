@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: MIT
  */
 import { describe, it, expect } from 'vitest';
+import { createHmac } from 'node:crypto';
 import { SignatureV4 } from '@smithy/signature-v4';
 import { Sha256 } from '@aws-crypto/sha256-js';
 import { signRequest, type SigV4Credentials } from '../nodes/AgentCoreHarness/helpers/sigv4';
@@ -43,6 +44,56 @@ describe('sigv4 — canonical algorithm (get-vanilla inputs)', () => {
 		expect(authOf(a)).toMatch(
 			/^AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE\/20150830\/us-east-1\/service\/aws4_request, SignedHeaders=host;x-amz-content-sha256;x-amz-date, Signature=[0-9a-f]{64}$/,
 		);
+	});
+});
+
+describe('sigv4 — SDK-independent known-answer oracle', () => {
+	// Reproduce the signing-key derivation on the AWS-documented example inputs
+	// (SigV4 docs, "derive the signing key"): AKIDEXAMPLE secret, 20120215,
+	// us-east-1, iam. AWS publishes the resulting key bytes, so this validates
+	// our HMAC chain against AWS's own reference without relying on the SDK.
+	it('derives AWS documented signing key from the reference inputs', () => {
+		const h = (k: Buffer | string, d: string) => createHmac('sha256', k).update(d, 'utf8').digest();
+		const kDate = h(`AWS4${EXAMPLE_SECRET_KEY}`, '20120215');
+		const kRegion = h(kDate, 'us-east-1');
+		const kService = h(kRegion, 'iam');
+		const kSigning = h(kService, 'aws4_request');
+		expect(kSigning.toString('hex')).toBe(
+			'f4780e2d9f65fa895f9c67b32ce1baf0b0d8a43505a000a1a9e090d414db404d',
+		);
+	});
+});
+
+describe('sigv4 — header value canonicalization (whitespace collapse)', () => {
+	const opts = {
+		region: 'us-east-1',
+		service: 'service',
+		credentials: TEST_CREDS,
+		overrideAmzDate: '20150830T123600Z',
+	};
+
+	it('collapses inner whitespace runs so equivalent values sign identically', () => {
+		const spaced = signRequest(
+			{ method: 'GET', url: 'https://example.amazonaws.com/', headers: { 'my-header': 'a   b   c' }, body: '' },
+			opts,
+		);
+		const single = signRequest(
+			{ method: 'GET', url: 'https://example.amazonaws.com/', headers: { 'my-header': 'a b c' }, body: '' },
+			opts,
+		);
+		expect(authOf(spaced)).toBe(authOf(single));
+	});
+
+	it('trims leading and trailing whitespace before signing', () => {
+		const padded = signRequest(
+			{ method: 'GET', url: 'https://example.amazonaws.com/', headers: { 'my-header': '   v   ' }, body: '' },
+			opts,
+		);
+		const clean = signRequest(
+			{ method: 'GET', url: 'https://example.amazonaws.com/', headers: { 'my-header': 'v' }, body: '' },
+			opts,
+		);
+		expect(authOf(padded)).toBe(authOf(clean));
 	});
 });
 
