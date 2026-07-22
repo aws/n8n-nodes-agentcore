@@ -1,6 +1,6 @@
 /*
  * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-License-Identifier: MIT
  */
 import {
 	ApplicationError,
@@ -43,6 +43,9 @@ import {
 	waitForHarnessReady,
 } from './helpers/client';
 import { consumeStream } from './helpers/stream';
+import { ControlClient } from './helpers/controlClient';
+import { invokeHarnessStream, type AwsCallerConfig } from './helpers/httpClient';
+import { decodeEventStream } from './helpers/eventstream';
 
 /**
  * Static-data shape per workflow.
@@ -119,15 +122,8 @@ export class AgentCoreHarness implements INodeType {
 					const region = getRegion(creds);
 					const awsCreds = getAwsCredentials(creds);
 
-					const { BedrockAgentCoreControlClient, ListHarnessesCommand } =
-						await import('@aws-sdk/client-bedrock-agentcore-control');
-
-					const client = new BedrockAgentCoreControlClient({
-						region,
-						credentials: awsCreds,
-					});
-
-					await client.send(new ListHarnessesCommand({ maxResults: 1 }));
+					const client = new ControlClient({ region, credentials: awsCreds });
+					await client.listHarnesses({ maxResults: 1 });
 					return { status: 'OK', message: 'Connection successful' };
 				} catch (error) {
 					return { status: 'Error', message: (error as Error).message };
@@ -144,24 +140,8 @@ export class AgentCoreHarness implements INodeType {
 		const region = getRegion(creds);
 		const awsCreds = getAwsCredentials(creds);
 
-		const {
-			BedrockAgentCoreControlClient,
-			CreateHarnessCommand,
-			UpdateHarnessCommand,
-			GetHarnessCommand,
-			ListHarnessesCommand,
-		} = await import('@aws-sdk/client-bedrock-agentcore-control');
-		const { BedrockAgentCoreClient, InvokeHarnessCommand } =
-			await import('@aws-sdk/client-bedrock-agentcore');
-
-		const controlClient = new BedrockAgentCoreControlClient({
-			region,
-			credentials: awsCreds,
-		});
-		const dataClient = new BedrockAgentCoreClient({
-			region,
-			credentials: awsCreds,
-		});
+		const callerConfig = { region, credentials: awsCreds };
+		const controlClient = new ControlClient(callerConfig);
 
 		const staticData = this.getWorkflowStaticData('node') as NodeStaticData;
 		if (!staticData.harnesses) {
@@ -177,32 +157,9 @@ export class AgentCoreHarness implements INodeType {
 
 				let result: IDataObject;
 				if (harnessArn) {
-					result = await invokeExisting(
-						this,
-						itemIndex,
-						region,
-						controlClient,
-						dataClient,
-						InvokeHarnessCommand,
-						GetHarnessCommand,
-					);
+					result = await invokeExisting(this, itemIndex, callerConfig, controlClient);
 				} else {
-					result = await runAgent(
-						this,
-						itemIndex,
-						creds,
-						region,
-						controlClient,
-						dataClient,
-						{
-							CreateHarnessCommand,
-							UpdateHarnessCommand,
-							InvokeHarnessCommand,
-							GetHarnessCommand,
-							ListHarnessesCommand,
-						},
-						staticData,
-					);
+					result = await runAgent(this, itemIndex, creds, callerConfig, controlClient, staticData);
 				}
 				returnData.push({ json: result, pairedItem: { item: itemIndex } });
 			} catch (error) {
@@ -222,14 +179,6 @@ export class AgentCoreHarness implements INodeType {
 }
 
 /* ----- top-level helpers (kept outside the class to keep `this` typing simple) ----- */
-
-interface SdkCommands {
-	CreateHarnessCommand: any;
-	UpdateHarnessCommand: any;
-	InvokeHarnessCommand: any;
-	GetHarnessCommand: any;
-	ListHarnessesCommand: any;
-}
 
 /**
  * Reads the model / tools / skills / limits fields shared by run and invoke.
@@ -281,10 +230,8 @@ async function runAgent(
 	ctx: IExecuteFunctions,
 	itemIndex: number,
 	creds: ICredentialDataDecryptedObject,
-	region: string,
-	controlClient: any,
-	dataClient: any,
-	commands: SdkCommands,
+	callerConfig: AwsCallerConfig,
+	controlClient: ControlClient,
 	staticData: NodeStaticData,
 ): Promise<IDataObject> {
 	const agentName = ctx.getNodeParameter('agentName', itemIndex) as string;
@@ -348,16 +295,10 @@ async function runAgent(
 		delete staticData.harnesses![agentName];
 		record = undefined as any;
 
-		const existing = await resolveExistingHarness(controlClient, commands, agentName);
+		const existing = await resolveExistingHarness(controlClient, agentName);
 		if (existing) {
-			const { DeleteHarnessCommand } = await import('@aws-sdk/client-bedrock-agentcore-control');
 			try {
-				await controlClient.send(
-					new DeleteHarnessCommand({
-						harnessId: existing.harnessId,
-						deleteManagedMemory: false,
-					}),
-				);
+				await controlClient.deleteHarness(existing.harnessId, false);
 			} catch {
 				// best-effort; fall through to create and let AWS surface any real error
 			}
@@ -368,7 +309,7 @@ async function runAgent(
 	// the harness by agent name. This survives: workflow copies, n8n restarts,
 	// test-execution static-data loss, and users deleting .n8n/database.sqlite.
 	if (!record) {
-		const existing = await resolveExistingHarness(controlClient, commands, agentName);
+		const existing = await resolveExistingHarness(controlClient, agentName);
 		if (existing) {
 			if (existing.status === 'READY') {
 				// Adopt the live harness. We don't know its stored config hash,
@@ -435,7 +376,6 @@ async function runAgent(
 	if (!record) {
 		record = await createHarness(
 			controlClient,
-			commands.CreateHarnessCommand,
 			agentName,
 			executionRoleArn,
 			provisionInput,
@@ -445,7 +385,6 @@ async function runAgent(
 	} else if (record.configHash !== desiredHash) {
 		record = await updateHarness(
 			controlClient,
-			commands.UpdateHarnessCommand,
 			record.harnessId,
 			record.arn,
 			provisionInput,
@@ -463,11 +402,7 @@ async function runAgent(
 
 	// Summarize what was actually provisioned (memory ARN, model, version, …) so
 	// the user can see it in the node output instead of guessing.
-	const harnessSummary = await getHarnessSummary(
-		controlClient,
-		commands.GetHarnessCommand,
-		record.harnessId,
-	);
+	const harnessSummary = await getHarnessSummary(controlClient, record.harnessId);
 
 	const sessionInput = (ctx.getNodeParameter('sessionId', itemIndex, '') as string).trim();
 	const sessionId = resolveSessionId(sessionInput);
@@ -486,7 +421,7 @@ async function runAgent(
 		timeoutSeconds: cfg.timeoutSeconds,
 	});
 
-	const result = await invoke(ctx, itemIndex, region, dataClient, commands.InvokeHarnessCommand, {
+	const result = await invoke(ctx, itemIndex, callerConfig, {
 		harnessArn: record.arn,
 		runtimeSessionId: sessionId,
 		runtimeUserId: cfg.runtimeUserId,
@@ -522,11 +457,8 @@ async function runAgent(
 async function invokeExisting(
 	ctx: IExecuteFunctions,
 	itemIndex: number,
-	region: string,
-	controlClient: any,
-	dataClient: any,
-	InvokeHarnessCommand: any,
-	GetHarnessCommand: any,
+	callerConfig: AwsCallerConfig,
+	controlClient: ControlClient,
 ): Promise<IDataObject> {
 	const harnessArn = (ctx.getNodeParameter('harnessArn', itemIndex) as string).trim();
 	validateHarnessArn(harnessArn);
@@ -555,7 +487,7 @@ async function invokeExisting(
 		timeoutSeconds: cfg.timeoutSeconds,
 	});
 
-	const result = await invoke(ctx, itemIndex, region, dataClient, InvokeHarnessCommand, {
+	const result = await invoke(ctx, itemIndex, callerConfig, {
 		harnessArn,
 		runtimeSessionId: sessionId,
 		runtimeUserId: cfg.runtimeUserId,
@@ -565,11 +497,7 @@ async function invokeExisting(
 
 	// Best-effort harness summary (memory ARN, model, version, …) for visibility.
 	// Uses control-plane GetHarness, which is SigV4 even on the OAuth invoke path.
-	const harnessSummary = await getHarnessSummary(
-		controlClient,
-		GetHarnessCommand,
-		harnessIdFromArn(harnessArn),
-	);
+	const harnessSummary = await getHarnessSummary(controlClient, harnessIdFromArn(harnessArn));
 
 	return {
 		operation: 'invokeExisting',
@@ -604,12 +532,18 @@ interface InvokeDispatch {
 async function invoke(
 	ctx: IExecuteFunctions,
 	itemIndex: number,
-	region: string,
-	dataClient: any,
-	InvokeHarnessCommand: any,
+	callerConfig: AwsCallerConfig,
 	dispatch: InvokeDispatch,
 ) {
 	const authentication = ctx.getNodeParameter('authentication', itemIndex, 'awsSigV4') as string;
+
+	// The path/header params (harnessArn, runtimeSessionId, qualifier) travel on
+	// the URL/headers, not in the JSON body, for both invoke paths.
+	const { harnessArn, runtimeSessionId, qualifier, ...body } = dispatch.payload as IDataObject &
+		Record<string, unknown>;
+	void harnessArn;
+	void runtimeSessionId;
+	void qualifier;
 
 	if (authentication === 'oauthBearer') {
 		const bearerToken = (ctx.getNodeParameter('bearerToken', itemIndex, '') as string).trim();
@@ -620,15 +554,8 @@ async function invoke(
 				{ itemIndex },
 			);
 		}
-		// The raw-HTTPS body excludes the path/header params (harnessArn,
-		// runtimeSessionId, qualifier go on the URL/headers).
-		const { harnessArn, runtimeSessionId, qualifier, ...body } = dispatch.payload as IDataObject &
-			Record<string, unknown>;
-		void harnessArn;
-		void runtimeSessionId;
-		void qualifier;
 		return invokeWithBearer({
-			region,
+			region: callerConfig.region,
 			harnessArn: dispatch.harnessArn,
 			bearerToken,
 			runtimeSessionId: dispatch.runtimeSessionId,
@@ -638,22 +565,22 @@ async function invoke(
 		});
 	}
 
-	const payload: IDataObject = { ...dispatch.payload };
-	if (dispatch.runtimeUserId) payload.runtimeUserId = dispatch.runtimeUserId;
-	const response = await dataClient.send(new InvokeHarnessCommand(payload));
-	const stream = (response as any).stream;
-	if (!stream) {
-		throw new NodeOperationError(ctx.getNode(), 'InvokeHarness returned no stream', {
-			itemIndex,
-		});
-	}
-	return consumeStream(stream);
+	// SigV4 path: sign + fetch the data-plane invoke, then decode the binary
+	// event-stream response through the same accumulator the OAuth path uses.
+	const stream = await invokeHarnessStream(callerConfig, {
+		harnessArn: dispatch.harnessArn,
+		runtimeSessionId: dispatch.runtimeSessionId,
+		qualifier: dispatch.qualifier || undefined,
+		runtimeUserId: dispatch.runtimeUserId || undefined,
+		body,
+	});
+	return consumeStream(decodeEventStream(stream));
 }
 
 /* ----- versioning / endpoints (opt-in) ----- */
 
 async function manageVersionsAndEndpoints(
-	controlClient: any,
+	controlClient: ControlClient,
 	harnessId: string,
 	provisioning: IDataObject,
 ): Promise<IDataObject> {
@@ -795,27 +722,19 @@ function validateEndpointName(name: string): void {
  * when the harness already exists in the AWS account.
  */
 async function resolveExistingHarness(
-	controlClient: any,
-	commands: SdkCommands,
+	controlClient: ControlClient,
 	agentName: string,
 ): Promise<{ harnessId: string; arn: string; status: string } | null> {
 	let nextToken: string | undefined;
 	do {
-		const resp = await controlClient.send(
-			new commands.ListHarnessesCommand({
-				maxResults: 100,
-				...(nextToken ? { nextToken } : {}),
-			}),
-		);
+		const resp = await controlClient.listHarnesses({ maxResults: 100, nextToken });
 		const summaries = resp.harnesses ?? resp.harnessSummaries ?? resp.items ?? [];
 		const match = summaries.find((h: any) => {
 			const name = h.harnessName ?? h.name ?? h.harnessId ?? '';
 			return name === agentName || name.startsWith(agentName + '-');
 		});
 		if (match) {
-			const detail = await controlClient.send(
-				new commands.GetHarnessCommand({ harnessId: match.harnessId }),
-			);
+			const detail = await controlClient.getHarness(match.harnessId);
 			const h = detail.harness ?? {};
 			return {
 				harnessId: h.harnessId,
@@ -837,12 +756,11 @@ async function resolveExistingHarness(
  * error so surfacing this never breaks the invoke result.
  */
 async function getHarnessSummary(
-	controlClient: any,
-	GetHarnessCommand: any,
+	controlClient: ControlClient,
 	harnessId: string,
 ): Promise<IDataObject | undefined> {
 	try {
-		const detail = await controlClient.send(new GetHarnessCommand({ harnessId }));
+		const detail = await controlClient.getHarness(harnessId);
 		return summarizeHarness(detail.harness ?? {});
 	} catch {
 		return undefined;
@@ -947,8 +865,7 @@ interface ProvisionInput {
 }
 
 async function createHarness(
-	controlClient: any,
-	CreateHarnessCommand: any,
+	controlClient: ControlClient,
 	agentName: string,
 	executionRoleArn: string,
 	input: ProvisionInput,
@@ -969,7 +886,7 @@ async function createHarness(
 	if (input.maxTokens !== undefined) payload.maxTokens = input.maxTokens;
 	if (input.timeoutSeconds !== undefined) payload.timeoutSeconds = input.timeoutSeconds;
 
-	const response = await controlClient.send(new CreateHarnessCommand(payload));
+	const response = await controlClient.createHarness(payload);
 	const harness = response.harness ?? {};
 	if (!harness.harnessId || !harness.arn) {
 		throw new ApplicationError('CreateHarness did not return harnessId and arn');
@@ -990,15 +907,13 @@ async function createHarness(
 }
 
 async function updateHarness(
-	controlClient: any,
-	UpdateHarnessCommand: any,
+	controlClient: ControlClient,
 	harnessId: string,
 	arn: string,
 	input: ProvisionInput,
 	desiredHash: string,
 ): Promise<HarnessRecord> {
 	const payload: IDataObject = {
-		harnessId,
 		systemPrompt: [{ text: input.systemPrompt }],
 	};
 	if (input.modelConfig) payload.model = input.modelConfig;
@@ -1014,7 +929,7 @@ async function updateHarness(
 	if (input.maxTokens !== undefined) payload.maxTokens = input.maxTokens;
 	if (input.timeoutSeconds !== undefined) payload.timeoutSeconds = input.timeoutSeconds;
 
-	await controlClient.send(new UpdateHarnessCommand(payload));
+	await controlClient.updateHarness(harnessId, payload);
 
 	const ready = await waitForHarnessReady(controlClient, harnessId);
 	if (ready.status !== 'READY') {

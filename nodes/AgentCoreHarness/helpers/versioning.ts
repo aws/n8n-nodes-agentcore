@@ -1,33 +1,30 @@
 /*
  * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-License-Identifier: MIT
  */
 import type { IDataObject } from 'n8n-workflow';
+import type { ControlClient } from './controlClient';
 
 /**
- * Thin wrappers around the harness versioning + endpoint control-plane APIs
- * (added to the SDK in 3.1071.0). These power the opt-in "Version & Endpoint"
- * actions on the run path, keeping the node's single-operation design intact.
+ * Thin wrappers around the harness versioning + endpoint control-plane APIs.
+ * These power the opt-in "Version & Endpoint" actions on the run path, keeping
+ * the node's single-operation design intact.
  *
  * TODO(v0.2-question-9): exposed as opt-in toggles rather than a second
  * resource. See docs/v0.2-questions.md.
  */
 
 export async function listHarnessVersions(
-	controlClient: any,
+	controlClient: ControlClient,
 	harnessId: string,
 ): Promise<IDataObject[]> {
-	const { ListHarnessVersionsCommand } = await import('@aws-sdk/client-bedrock-agentcore-control');
 	const versions: IDataObject[] = [];
 	let nextToken: string | undefined;
 	do {
-		const resp = await controlClient.send(
-			new ListHarnessVersionsCommand({
-				harnessId,
-				maxResults: 100,
-				...(nextToken ? { nextToken } : {}),
-			}),
-		);
+		const resp = await controlClient.listHarnessVersions(harnessId, {
+			maxResults: 100,
+			nextToken,
+		});
 		for (const v of resp.harnessVersions ?? []) {
 			versions.push({
 				harnessVersion: v.harnessVersion,
@@ -43,20 +40,16 @@ export async function listHarnessVersions(
 }
 
 export async function listHarnessEndpoints(
-	controlClient: any,
+	controlClient: ControlClient,
 	harnessId: string,
 ): Promise<IDataObject[]> {
-	const { ListHarnessEndpointsCommand } = await import('@aws-sdk/client-bedrock-agentcore-control');
 	const endpoints: IDataObject[] = [];
 	let nextToken: string | undefined;
 	do {
-		const resp = await controlClient.send(
-			new ListHarnessEndpointsCommand({
-				harnessId,
-				maxResults: 100,
-				...(nextToken ? { nextToken } : {}),
-			}),
-		);
+		const resp = await controlClient.listHarnessEndpoints(harnessId, {
+			maxResults: 100,
+			nextToken,
+		});
 		for (const e of resp.endpoints ?? []) {
 			endpoints.push(summarizeEndpoint(e));
 		}
@@ -71,45 +64,35 @@ export async function listHarnessEndpoints(
  * ConflictException.
  */
 export async function upsertHarnessEndpoint(
-	controlClient: any,
+	controlClient: ControlClient,
 	harnessId: string,
 	endpointName: string,
 	targetVersion: string | undefined,
 	description: string | undefined,
 ): Promise<IDataObject> {
-	const { CreateHarnessEndpointCommand, UpdateHarnessEndpointCommand, GetHarnessEndpointCommand } =
-		await import('@aws-sdk/client-bedrock-agentcore-control');
-
 	// Does the endpoint already exist?
 	let exists = false;
 	try {
-		await controlClient.send(new GetHarnessEndpointCommand({ harnessId, endpointName }));
+		await controlClient.getHarnessEndpoint(harnessId, endpointName);
 		exists = true;
 	} catch (error) {
-		const name = (error as { name?: string }).name ?? '';
-		if (name !== 'ResourceNotFoundException') throw error;
+		const message = (error as Error).message ?? '';
+		if (!message.includes('ResourceNotFoundException')) throw error;
 	}
 
 	if (exists) {
-		const resp = await controlClient.send(
-			new UpdateHarnessEndpointCommand({
-				harnessId,
-				endpointName,
-				...(targetVersion ? { targetVersion } : {}),
-				...(description ? { description } : {}),
-			}),
-		);
+		const resp = await controlClient.updateHarnessEndpoint(harnessId, endpointName, {
+			...(targetVersion ? { targetVersion } : {}),
+			...(description ? { description } : {}),
+		});
 		return summarizeEndpoint(resp.endpoint ?? {});
 	}
 
-	const resp = await controlClient.send(
-		new CreateHarnessEndpointCommand({
-			harnessId,
-			endpointName,
-			...(targetVersion ? { targetVersion } : {}),
-			...(description ? { description } : {}),
-		}),
-	);
+	const resp = await controlClient.createHarnessEndpoint(harnessId, {
+		endpointName,
+		...(targetVersion ? { targetVersion } : {}),
+		...(description ? { description } : {}),
+	});
 	return summarizeEndpoint(resp.endpoint ?? {});
 }
 

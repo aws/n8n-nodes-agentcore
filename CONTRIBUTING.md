@@ -53,21 +53,42 @@ git clone https://github.com/aws/n8n-nodes-agentcore.git
 cd n8n-nodes-agentcore
 npm install
 npm run build
+npm test
 ```
 
 To test against a local n8n instance, see the "Local development" section of
 [README.md](./README.md).
 
+### Running tests
+
+Unit tests run with [vitest](https://vitest.dev/) and live under `test/`:
+
+```bash
+npm test          # run the suite once
+npm run test:watch  # re-run on change while developing
+```
+
+Tests are pure and offline (no AWS credentials or network needed) — the AWS
+request/response paths are exercised with mocked `fetch` and known-good fixtures.
+`npm test` also runs in CI on every pull request and must pass before merge.
+
+Please add or update tests for any behavior you change. Pure helpers (config
+builders, the SigV4 signer, the event-stream decoder, the stream accumulator)
+are directly unit-testable and should stay covered. For end-to-end behavior
+against live AWS, include a manual test plan in the PR as well.
+
 ### Before submitting a pull request
 
 - [ ] `npm run lint` passes with zero errors
+- [ ] `npm run typecheck` passes
+- [ ] `npm test` passes, and new or changed behavior has unit tests
 - [ ] `npm run build` completes cleanly
-- [ ] New or changed behavior is covered by a manual test plan in the PR
-      description
+- [ ] End-to-end behavior is covered by a manual test plan in the PR description
 - [ ] Documentation is updated (README, inline JSDoc, or example workflows
       as applicable)
-- [ ] If adding a dependency, explain why it is necessary and check that its
-      license is compatible with Apache-2.0
+- [ ] If adding a runtime dependency, explain why it is necessary — note that
+      verified community nodes must ship with **zero** runtime dependencies, so
+      new runtime deps are generally not accepted
 
 ### Pull request process
 
