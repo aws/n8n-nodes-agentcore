@@ -27,7 +27,7 @@ a public issue.
 ### Developer Certificate of Origin (DCO)
 
 By contributing, you certify that you wrote the code or have the right to
-contribute it under this project's license (Apache-2.0). All commits must
+contribute it under this project's license (MIT). All commits must
 include a sign-off line:
 
 ```
@@ -133,4 +133,4 @@ By participating, you agree to uphold this code.
 ## License
 
 By contributing, you agree that your contributions will be licensed under the
-project's [Apache-2.0 license](./LICENSE)
+project's [MIT license](./LICENSE)

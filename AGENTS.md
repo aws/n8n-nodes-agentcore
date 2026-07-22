@@ -14,10 +14,11 @@ authoritative for the conventions below.
 - It targets the **AgentCore harness** primitive (declarative spec),
   not AgentCore Runtime (the container-hosting primitive).
 - It is **not** a general-purpose Bedrock client. It only speaks the
-  Harness control plane (`@aws-sdk/client-bedrock-agentcore-control`)
-  and data plane (`@aws-sdk/client-bedrock-agentcore`).
-- It is **not** a wrapper around the AgentCore CLI. Harness-consumer
-  logic is implemented directly on the AWS SDK v3 clients.
+  Harness control plane (`bedrock-agentcore-control`) and data plane
+  (`bedrock-agentcore`), called directly over HTTPS.
+- It is **not** a wrapper around the AgentCore CLI, and (as of the SDK-free
+  rewrite) **not** built on the AWS SDK. Harness-consumer logic calls the
+  AgentCore REST APIs directly with `fetch` + an inline SigV4 signer.
 
 ## Repo layout
 
@@ -78,7 +79,7 @@ calling `CreateHarness`.
 ## Build, lint, type-check, test
 
 ```
-npm run build         # tsc + gulp icon copy -> dist/
+npm run build         # tsc + icon/codex copy -> dist/
 npm run dev           # tsc --watch
 npm run lint          # eslint with eslint-plugin-n8n-nodes-base
 npm run typecheck     # tsc --noEmit (strict mode)
@@ -101,25 +102,26 @@ community nodes ship with zero runtime dependencies.
 Local testing against a real n8n is done via `npm link` into
 `~/.n8n/custom/`. See `README.md` "Local development" for the full flow.
 
-## Runtime dependencies - keep this list short
+## Runtime dependencies - keep this list at ZERO
 
-Today the package has **two** production deps:
+The package ships with **zero** production dependencies. n8n's community-node
+verification (and n8n Cloud) forbid runtime dependencies, so AWS calls are made
+with the global `fetch`, an inline SigV4 signer (`helpers/sigv4.ts`, `node:crypto`
+only), and an inline event-stream decoder (`helpers/eventstream.ts`). The AWS SDK
+was removed for exactly this reason.
 
-- `@aws-sdk/client-bedrock-agentcore`
-- `@aws-sdk/client-bedrock-agentcore-control`
+**Do not add a runtime dependency.** Any entry in `package.json` `dependencies`
+breaks verification and will fail n8n's scanner (`@n8n/scan-community-package`).
+If you think you need one:
 
-Both are Apache-2.0 and AWS-maintained. **Adding a runtime dependency is
-a security-review event** - it ships into every n8n install that adopts
-this node. Before adding one, confirm:
+- First try a small inline helper (the SigV4 signer and event-stream decoder are
+  the precedent — both were reimplemented inline rather than pulled in).
+- If it is genuinely unavoidable, it is a scope/verification decision, not a
+  routine change - discuss before adding.
 
-- License is permissive (Apache-2.0, MIT, BSD, ISC). The
-  `dependency-review` workflow enforces this.
-- It is actively maintained.
-- It does not pull in transitive deps with `exec`, `eval`, or native
-  bindings unless absolutely necessary.
-- It cannot be replaced by a small inline helper.
-
-`n8n-workflow` is a peer dep, supplied by n8n at runtime. Never bundle it.
+`n8n-workflow` is a peer dep, supplied by n8n at runtime. Never bundle it. The
+AWS SDK and `@smithy/*` are retained only as **devDependencies** for the offline
+signer-parity tests; they must never move to `dependencies`.
 
 ## Security invariants (enforced in CI)
 
@@ -133,8 +135,9 @@ These come directly from `docs/SPEC.md` §9 and are checked in
 - Credentials are read from the n8n credential vault per execution via
   `getCredentials('agentCoreApi')`. They are never persisted by the
   node and never logged.
-- TLS 1.2+ and SigV4 signing are inherited from `@aws-sdk` defaults;
-  do not override them.
+- TLS 1.2+ comes from Node's `fetch` default (all endpoints are hardcoded
+  `https://`, cert validation is never disabled). SigV4 signing is done inline
+  in `helpers/sigv4.ts` using `node:crypto`; do not weaken either.
 - TypeScript strict mode is non-negotiable (see `tsconfig.json`).
 
 ## n8n conventions specific to this repo

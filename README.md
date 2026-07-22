@@ -409,10 +409,10 @@ packages, and installed on **self-hosted** n8n via **Settings → Community Node
 
 Appearing in the in-editor nodes panel, and installing on **n8n Cloud**, both
 require the node to be **verified** through the
-[n8n Creator Portal](https://creators.n8n.io/nodes). n8n's verification currently
-requires an MIT license and no runtime dependencies. This node is Apache-2.0 and
-depends on the AWS SDK, so verification is not yet complete; it's tracked
-separately. Until then, use the node on self-hosted n8n as described in
+[n8n Creator Portal](https://creators.n8n.io/nodes). n8n's verification requires
+an MIT license and no runtime dependencies; this node is MIT-licensed and ships
+with zero runtime dependencies, and has been submitted for verification. Until
+verification is granted, use the node on self-hosted n8n as described in
 [Installation](#installation).
 
 ### Announce
@@ -479,4 +479,4 @@ endorsement.
 
 ## License
 
-Apache-2.0
+MIT
