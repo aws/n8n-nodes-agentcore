@@ -2,9 +2,10 @@
 
 An n8n community node for **Amazon Bedrock AgentCore harness**. Run production-grade AI agents with isolated microVMs, real browsers, real code execution, and persistent memory — directly from your n8n workflows.
 
-> Supported in the AgentCore regions us-east-1, us-west-2, ap-southeast-2, and
-> eu-central-1. Pin this package to a specific version in production and review
-> release notes before upgrading.
+> Available in the AWS Regions listed in the
+> [AgentCore Regions documentation](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/agentcore-regions.html).
+> Pin this package to a specific version in production and review release notes
+> before upgrading.
 
 ## Why this node?
 
@@ -68,7 +69,7 @@ npm install @aws/n8n-nodes-agentcore
 
 You need:
 
-1. **An AWS account** with Amazon Bedrock and AgentCore access in a supported region (us-east-1, us-west-2, ap-southeast-2, eu-central-1)
+1. **An AWS account** with Amazon Bedrock and AgentCore access in a supported region (see the [AgentCore Regions documentation](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/agentcore-regions.html))
 2. **AWS credentials** (access key + secret key) with the IAM policy below attached
 3. **An IAM execution role** that the harness assumes when running, with a trust policy and permissions described below
 4. **An enabled foundation model** in the Amazon Bedrock console (Claude Haiku, Sonnet, etc.)
@@ -408,10 +409,10 @@ packages, and installed on **self-hosted** n8n via **Settings → Community Node
 
 Appearing in the in-editor nodes panel, and installing on **n8n Cloud**, both
 require the node to be **verified** through the
-[n8n Creator Portal](https://creators.n8n.io/nodes). n8n's verification currently
-requires an MIT license and no runtime dependencies. This node is Apache-2.0 and
-depends on the AWS SDK, so verification is not yet complete; it's tracked
-separately. Until then, use the node on self-hosted n8n as described in
+[n8n Creator Portal](https://creators.n8n.io/nodes). n8n's verification requires
+an MIT license and no runtime dependencies; this node is MIT-licensed and ships
+with zero runtime dependencies, and has been submitted for verification. Until
+verification is granted, use the node on self-hosted n8n as described in
 [Installation](#installation).
 
 ### Announce
@@ -478,4 +479,4 @@ endorsement.
 
 ## License
 
-Apache-2.0
+MIT
