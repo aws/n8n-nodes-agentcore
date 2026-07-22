@@ -17,7 +17,7 @@
   "homepage": "https://github.com/aws/n8n-nodes-agentcore",
   "author": {
     "name": "Amazon Web Services",
-    "email": "open-source@amazon.com"
+    "email": "sdraghav@amazon.com"
   },
   "repository": {
     "type": "git",
