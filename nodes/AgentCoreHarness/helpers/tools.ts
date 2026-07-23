@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: MIT
  */
 import { createHash } from 'crypto';
-import type { IDataObject } from 'n8n-workflow';
+import { ApplicationError, type IDataObject } from 'n8n-workflow';
 
 export interface ToolConfig {
 	type: string;
@@ -57,7 +57,7 @@ export function buildToolsArray(toolsUi: IDataObject | undefined): ToolConfig[] 
 			case 'agentcore_gateway': {
 				const gatewayArn = (uiTool.gatewayArn as string) || '';
 				if (!gatewayArn) {
-					throw new Error('Gateway tool requires a Gateway ARN');
+					throw new ApplicationError('Gateway tool requires a Gateway ARN');
 				}
 				const agentCoreGateway: IDataObject = { gatewayArn };
 				const outboundAuth = buildGatewayOutboundAuth(uiTool);
@@ -73,7 +73,7 @@ export function buildToolsArray(toolsUi: IDataObject | undefined): ToolConfig[] 
 			case 'remote_mcp': {
 				const url = (uiTool.url as string) || '';
 				if (!url) {
-					throw new Error('Remote MCP tool requires a URL');
+					throw new ApplicationError('Remote MCP tool requires a URL');
 				}
 				const remoteMcp: IDataObject = { url };
 				const headers = parseHeaders(uiTool.headers as string);
@@ -91,11 +91,11 @@ export function buildToolsArray(toolsUi: IDataObject | undefined): ToolConfig[] 
 			case 'inline_function': {
 				const name = (uiTool.name as string) || '';
 				if (!name) {
-					throw new Error('Inline function tool requires a Name (the function name).');
+					throw new ApplicationError('Inline function tool requires a Name (the function name).');
 				}
 				const description = (uiTool.description as string) || '';
 				if (!description) {
-					throw new Error(`Inline function "${name}" requires a Description.`);
+					throw new ApplicationError(`Inline function "${name}" requires a Description.`);
 				}
 				const inputSchema = parseInputSchema(uiTool.inputSchema as string, name);
 				tools.push({
@@ -107,7 +107,7 @@ export function buildToolsArray(toolsUi: IDataObject | undefined): ToolConfig[] 
 			}
 
 			default:
-				throw new Error(`Unsupported tool type: ${type}`);
+				throw new ApplicationError(`Unsupported tool type: ${type}`);
 		}
 	}
 
@@ -127,7 +127,7 @@ function buildGatewayOutboundAuth(uiTool: IDataObject): IDataObject | undefined 
 		case 'oauth': {
 			const providerName = (uiTool.oauthProviderName as string) || '';
 			if (!providerName) {
-				throw new Error('Gateway OAuth outbound auth requires a Credential Provider Name.');
+				throw new ApplicationError('Gateway OAuth outbound auth requires a Credential Provider Name.');
 			}
 			const oauthCredentialProvider: IDataObject = { credentialProviderName: providerName };
 			const scopes = splitScopes(uiTool.oauthScopes as string);
@@ -153,33 +153,39 @@ function parseHeaders(headersJson: string | undefined): Record<string, string> {
 	if (!headersJson || headersJson.trim() === '') {
 		return {};
 	}
+	let parsed: unknown;
 	try {
-		const parsed = JSON.parse(headersJson);
-		if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-			throw new Error('Headers must be a JSON object');
-		}
-		return parsed as Record<string, string>;
-	} catch (err) {
-		throw new Error('Headers must be valid JSON, for example: {"Authorization": "Bearer ..."}');
+		parsed = JSON.parse(headersJson);
+	} catch {
+		parsed = undefined;
 	}
+	if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+		throw new ApplicationError(
+			'Headers must be valid JSON, for example: {"Authorization": "Bearer ..."}',
+		);
+	}
+	return parsed as Record<string, string>;
 }
 
 function parseInputSchema(raw: string | undefined, toolName: string): IDataObject {
 	if (!raw || raw.trim() === '') {
-		throw new Error(`Inline function "${toolName}" requires an Input Schema (JSON Schema object).`);
+		throw new ApplicationError(
+			`Inline function "${toolName}" requires an Input Schema (JSON Schema object).`,
+		);
 	}
+	let parsed: unknown;
 	try {
-		const parsed = JSON.parse(raw);
-		if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-			throw new Error('not an object');
-		}
-		return parsed as IDataObject;
+		parsed = JSON.parse(raw);
 	} catch {
-		throw new Error(
+		parsed = undefined;
+	}
+	if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+		throw new ApplicationError(
 			`Inline function "${toolName}" Input Schema must be a valid JSON Schema object, ` +
 				'for example: {"type":"object","properties":{"city":{"type":"string"}},"required":["city"]}',
 		);
 	}
+	return parsed as IDataObject;
 }
 
 /**

@@ -2,7 +2,7 @@
  * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
  * SPDX-License-Identifier: MIT
  */
-import type { IDataObject } from 'n8n-workflow';
+import { ApplicationError, type IDataObject } from 'n8n-workflow';
 
 /**
  * Builds the `model` union (HarnessModelConfiguration) for CreateHarness,
@@ -111,15 +111,16 @@ function numOrUndef(value: unknown): number | undefined {
 
 function parseAdditionalParams(raw: string | undefined): IDataObject | undefined {
 	if (!raw || raw.trim() === '') return undefined;
+	const invalid =
+		'Model "Additional Params" must be a valid JSON object, for example: {"reasoning": {"effort": "high"}}';
+	let parsed: unknown;
 	try {
-		const parsed = JSON.parse(raw);
-		if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-			throw new Error('not an object');
-		}
-		return parsed as IDataObject;
+		parsed = JSON.parse(raw);
 	} catch {
-		throw new Error(
-			'Model "Additional Params" must be a valid JSON object, for example: {"reasoning": {"effort": "high"}}',
-		);
+		parsed = undefined;
 	}
+	if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+		throw new ApplicationError(invalid);
+	}
+	return parsed as IDataObject;
 }
