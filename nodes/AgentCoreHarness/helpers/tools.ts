@@ -127,7 +127,9 @@ function buildGatewayOutboundAuth(uiTool: IDataObject): IDataObject | undefined 
 		case 'oauth': {
 			const providerName = (uiTool.oauthProviderName as string) || '';
 			if (!providerName) {
-				throw new ApplicationError('Gateway OAuth outbound auth requires a Credential Provider Name.');
+				throw new ApplicationError(
+					'Gateway OAuth outbound auth requires a Credential Provider Name.',
+				);
 			}
 			const oauthCredentialProvider: IDataObject = { credentialProviderName: providerName };
 			const scopes = splitScopes(uiTool.oauthScopes as string);
