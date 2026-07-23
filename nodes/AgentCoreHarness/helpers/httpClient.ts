@@ -125,6 +125,7 @@ async function sendWithRetry(config: AwsCallerConfig, send: SignedSend): Promise
 			},
 			{ region: config.region, service: SERVICE, credentials: config.credentials },
 		);
+		let networkError: unknown;
 		try {
 			const res = await fetch(send.url, {
 				method: send.method,
@@ -137,9 +138,13 @@ async function sendWithRetry(config: AwsCallerConfig, send: SignedSend): Promise
 			// Retryable status: fall through to backoff.
 			lastError = new Error(`HTTP ${res.status}`);
 		} catch (err) {
-			// Network-level failure (DNS, connection reset, etc.).
+			// Network-level failure (DNS, connection reset, etc.). Record it and
+			// decide outside the catch whether to give up or retry.
+			networkError = err;
 			lastError = err;
-			if (!send.retrySafe || attempt === MAX_ATTEMPTS) throw err;
+		}
+		if (networkError !== undefined && (!send.retrySafe || attempt === MAX_ATTEMPTS)) {
+			throw networkError;
 		}
 		await sleep(BASE_BACKOFF_MS * 2 ** (attempt - 1));
 	}

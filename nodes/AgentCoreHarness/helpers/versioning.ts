@@ -72,12 +72,17 @@ export async function upsertHarnessEndpoint(
 ): Promise<IDataObject> {
 	// Does the endpoint already exist?
 	let exists = false;
+	let lookupError: unknown;
 	try {
 		await controlClient.getHarnessEndpoint(harnessId, endpointName);
 		exists = true;
 	} catch (error) {
-		const message = (error as Error).message ?? '';
-		if (!message.includes('ResourceNotFoundException')) throw error;
+		lookupError = error;
+	}
+	if (lookupError !== undefined) {
+		const message = (lookupError as Error).message ?? '';
+		// A genuine "not found" means we should create it; anything else is a real error.
+		if (!message.includes('ResourceNotFoundException')) throw lookupError;
 	}
 
 	if (exists) {

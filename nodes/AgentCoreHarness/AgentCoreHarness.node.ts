@@ -13,6 +13,7 @@ import {
 	type INodeExecutionData,
 	type INodeType,
 	type INodeTypeDescription,
+	NodeConnectionTypes,
 	NodeOperationError,
 } from 'n8n-workflow';
 
@@ -97,8 +98,16 @@ export class AgentCoreHarness implements INodeType {
 		defaults: {
 			name: 'Amazon Bedrock AgentCore',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		usableAsTool: true,
+		// n8n's verification scanner (@n8n/community-nodes) requires
+		// NodeConnectionTypes.Main over the 'main' literal; the older
+		// eslint-plugin-n8n-nodes-base rule wants the literal. They resolve to the
+		// same value ('main'); we follow the verification scanner and disable the
+		// legacy rule here.
+		// eslint-disable-next-line n8n-nodes-base/node-class-description-inputs-wrong-regular-node
+		inputs: [NodeConnectionTypes.Main],
+		// eslint-disable-next-line n8n-nodes-base/node-class-description-outputs-wrong
+		outputs: [NodeConnectionTypes.Main],
 		credentials: [
 			{
 				name: 'agentCoreApi',
@@ -170,7 +179,9 @@ export class AgentCoreHarness implements INodeType {
 					});
 					continue;
 				}
-				throw error;
+				throw error instanceof NodeOperationError
+					? error
+					: new NodeOperationError(this.getNode(), error as Error, { itemIndex });
 			}
 		}
 
