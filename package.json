@@ -68,7 +68,7 @@
     "prettier": "^3.2.0",
     "secretlint": "^13.0.2",
     "typescript": "^5.4.0",
-    "vitest": "^2.1.9"
+    "vitest": "^3.2.6"
   },
   "peerDependencies": {
     "n8n-workflow": "*"
