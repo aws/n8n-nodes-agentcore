@@ -1,5 +1,5 @@
 {
-	"node": "n8n-nodes-agentcore.agentCoreHarness",
+	"node": "@aws/n8n-nodes-agentcore.agentCoreHarness",
 	"nodeVersion": "1.0",
 	"codexVersion": "1.0",
 	"categories": ["Development", "Utility"],
