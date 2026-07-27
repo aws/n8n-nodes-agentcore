@@ -176,13 +176,30 @@ export const harnessFields: INodeProperties[] = [
 			'The user message to send to the agent. Optional only when sending Tool Results back for an inline-function round-trip.',
 	},
 
+	// ----- Tools (toggle to keep the form clean when unused) -----
+	{
+		displayName: 'Add Tools',
+		name: 'addTools',
+		type: 'boolean',
+		default: false,
+		description:
+			'Whether to give the agent tools such as a code interpreter, browser, or MCP server',
+	},
 	{
 		...toolsField,
+		displayOptions: { show: { addTools: [true] } },
 		description:
 			'Tools the agent can use. In Run Agent mode these are baked into the harness configuration. When a Harness ARN is set, they override the harness tool list for this invocation only.',
 	},
 
-	// ----- Skills -----
+	// ----- Skills (toggle to keep the form clean when unused) -----
+	{
+		displayName: 'Add Skills',
+		name: 'addSkills',
+		type: 'boolean',
+		default: false,
+		description: 'Whether to load skill bundles that give the agent domain knowledge on demand',
+	},
 	{
 		displayName: 'Skills',
 		name: 'skills',
@@ -190,6 +207,7 @@ export const harnessFields: INodeProperties[] = [
 		placeholder: 'Add Skill',
 		typeOptions: { multipleValues: true },
 		default: {},
+		displayOptions: { show: { addSkills: [true] } },
 		description:
 			'Skill bundles the agent loads on demand. In Run Agent mode these are baked into the harness; with a Harness ARN they are appended per invocation (invoke-time wins on name collision).',
 		options: [
@@ -304,19 +322,7 @@ export const harnessFields: INodeProperties[] = [
 			{ name: 'OAuth Bearer Token', value: 'oauthBearer' },
 		],
 		description:
-			'How to authenticate the InvokeHarness call. SigV4 uses the credential AWS keys. OAuth Bearer makes a raw HTTPS request with a JWT (the harness must have an inbound OAuth authorizer configured). Control-plane operations (create/update/provision) always use SigV4.',
-	},
-	{
-		displayName: 'Bearer Token',
-		name: 'bearerToken',
-		type: 'string',
-		typeOptions: { password: true },
-		default: '',
-		required: true,
-		displayOptions: { show: { authentication: ['oauthBearer'] } },
-		placeholder: '={{ $json.id_token }}',
-		description:
-			'JWT issued by your identity provider. Populate it from an upstream auth node via an expression. Used only for the invoke call; the credential AWS keys are ignored for invoke when OAuth is selected.',
+			'How to authenticate the InvokeHarness call. SigV4 uses the credential AWS keys. OAuth Bearer sends a JWT from the Amazon Bedrock AgentCore Bearer API credential (the harness must have an inbound OAuth authorizer configured). Control-plane operations (create/update/provision) always use SigV4.',
 	},
 
 	{

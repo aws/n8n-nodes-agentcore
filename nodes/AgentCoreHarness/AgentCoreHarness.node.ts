@@ -5,8 +5,11 @@
 import {
 	ApplicationError,
 	type ICredentialDataDecryptedObject,
+	type ICredentialsDecrypted,
+	type ICredentialTestFunctions,
 	type IDataObject,
 	type IExecuteFunctions,
+	type INodeCredentialTestResult,
 	type INodeExecutionData,
 	type INodeType,
 	type INodeTypeDescription,
@@ -114,14 +117,38 @@ export class AgentCoreHarness implements INodeType {
 				name: 'agentCoreApi',
 				required: true,
 			},
+			{
+				// The OAuth Bearer token lives in its own credential, never in a
+				// node input field, so it can't leak into the workflow execution
+				// log. Shown and required only when OAuth Bearer auth is selected.
+				name: 'agentCoreBearerApi',
+				required: true,
+				displayOptions: { show: { authentication: ['oauthBearer'] } },
+				// A bearer JWT can't be network-tested without a specific harness's
+				// inbound authorizer, so we validate it offline (well-formed and
+				// not expired) via this node method rather than a live request.
+				testedBy: 'agentCoreBearerTest',
+			},
 		],
 		properties: [...harnessFields],
 	};
 
-	// The credential type (AgentCoreApi.credentials.ts) carries its own
-	// `test` request + `authenticate` signer, so n8n validates credentials
-	// through the credential itself. A node-level `testedBy` method would just
-	// duplicate that, so it is intentionally omitted.
+	// The AWS-keys credential (AgentCoreApi) carries its own `test` request +
+	// `authenticate` signer, so it validates itself and needs no node method.
+	// The bearer credential (AgentCoreBearerApi) is different: a JWT can't be
+	// network-tested without a specific harness's inbound authorizer, so we
+	// validate it offline here (well-formed and not expired).
+	methods = {
+		credentialTest: {
+			async agentCoreBearerTest(
+				this: ICredentialTestFunctions,
+				credential: ICredentialsDecrypted<ICredentialDataDecryptedObject>,
+			): Promise<INodeCredentialTestResult> {
+				const token = ((credential.data?.bearerToken as string) || '').trim();
+				return validateBearerToken(token);
+			},
+		},
+	};
 
 	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
 		const items = this.getInputData();
@@ -200,10 +227,15 @@ function resolveConfig(
 	const systemPrompt =
 		applyDefaults && !systemPromptRaw.trim() ? DEFAULT_SYSTEM_PROMPT : systemPromptRaw;
 
-	const toolsUi = ctx.getNodeParameter('tools', itemIndex, {}) as IDataObject;
+	// The Add Tools / Add Skills toggles gate the fields in the UI. n8n still
+	// returns a hidden field's stored value, so we honor the toggle here too:
+	// what the user sees enabled is exactly what gets sent.
+	const addTools = ctx.getNodeParameter('addTools', itemIndex, false) as boolean;
+	const toolsUi = addTools ? (ctx.getNodeParameter('tools', itemIndex, {}) as IDataObject) : {};
 	const tools = buildToolsArray(toolsUi);
 
-	const skillsUi = ctx.getNodeParameter('skills', itemIndex, {}) as IDataObject;
+	const addSkills = ctx.getNodeParameter('addSkills', itemIndex, false) as boolean;
+	const skillsUi = addSkills ? (ctx.getNodeParameter('skills', itemIndex, {}) as IDataObject) : {};
 	const skills = buildSkillsArray(skillsUi);
 
 	const additional = ctx.getNodeParameter('additionalOptions', itemIndex, {}) as IDataObject;
@@ -546,11 +578,14 @@ async function invoke(
 	void qualifier;
 
 	if (authentication === 'oauthBearer') {
-		const bearerToken = (ctx.getNodeParameter('bearerToken', itemIndex, '') as string).trim();
+		// The token comes from the dedicated bearer credential, never a node
+		// input field, so it stays out of the workflow execution log.
+		const bearerCreds = await ctx.getCredentials('agentCoreBearerApi', itemIndex);
+		const bearerToken = ((bearerCreds?.bearerToken as string) || '').trim();
 		if (!bearerToken) {
 			throw new NodeOperationError(
 				ctx.getNode(),
-				'OAuth Bearer authentication selected but no Bearer Token was provided.',
+				'OAuth Bearer authentication is selected but the Amazon Bedrock AgentCore Bearer API credential has no token. Add the credential and enter your JWT.',
 				{ itemIndex },
 			);
 		}
@@ -683,6 +718,42 @@ function parseFilesystemMounts(mountsUi: IDataObject | undefined): FilesystemMou
 }
 
 /* ----- validators ----- */
+
+/**
+ * Offline validation for the bearer credential's "Test" button. A JWT can't be
+ * checked against the service without a specific harness's inbound authorizer,
+ * so we do the two checks that catch real problems locally: that the token is a
+ * well-formed JWT (three dot-separated base64url segments with a decodable JSON
+ * payload) and that it is not already expired (`exp` claim, if present). No
+ * network call and no secret is logged — only the pass/fail status is returned.
+ */
+export function validateBearerToken(token: string): INodeCredentialTestResult {
+	if (!token) {
+		return { status: 'Error', message: 'No bearer token provided.' };
+	}
+	const parts = token.split('.');
+	if (parts.length !== 3 || parts.some((p) => p.length === 0)) {
+		return {
+			status: 'Error',
+			message: 'Token is not a well-formed JWT (expected three dot-separated segments).',
+		};
+	}
+	let payload: Record<string, unknown>;
+	try {
+		const json = Buffer.from(parts[1], 'base64url').toString('utf8');
+		payload = JSON.parse(json) as Record<string, unknown>;
+	} catch {
+		return { status: 'Error', message: 'Token payload is not valid base64url-encoded JSON.' };
+	}
+	const exp = payload.exp;
+	if (typeof exp === 'number') {
+		const nowSeconds = Math.floor(Date.now() / 1000);
+		if (exp <= nowSeconds) {
+			return { status: 'Error', message: 'Token has expired. Issue a fresh token and try again.' };
+		}
+	}
+	return { status: 'OK', message: 'Token is a well-formed JWT and not expired.' };
+}
 
 function validateAgentName(name: string): void {
 	if (!/^[A-Za-z][A-Za-z0-9_]{0,39}$/.test(name)) {

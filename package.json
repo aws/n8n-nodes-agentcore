@@ -49,7 +49,8 @@
   "n8n": {
     "n8nNodesApiVersion": 1,
     "credentials": [
-      "dist/credentials/AgentCoreApi.credentials.js"
+      "dist/credentials/AgentCoreApi.credentials.js",
+      "dist/credentials/AgentCoreBearerApi.credentials.js"
     ],
     "nodes": [
       "dist/nodes/AgentCoreHarness/AgentCoreHarness.node.js"
