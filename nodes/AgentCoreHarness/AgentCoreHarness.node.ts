@@ -5,11 +5,8 @@
 import {
 	ApplicationError,
 	type ICredentialDataDecryptedObject,
-	type ICredentialTestFunctions,
-	type ICredentialsDecrypted,
 	type IDataObject,
 	type IExecuteFunctions,
-	type INodeCredentialTestResult,
 	type INodeExecutionData,
 	type INodeType,
 	type INodeTypeDescription,
@@ -45,7 +42,11 @@ import {
 } from './helpers/client';
 import { consumeStream } from './helpers/stream';
 import { ControlClient } from './helpers/controlClient';
-import { invokeHarnessStream, type AwsCallerConfig } from './helpers/httpClient';
+import {
+	invokeHarnessStream,
+	type AwsCallerConfig,
+	type HttpRequestFn,
+} from './helpers/httpClient';
 import { decodeEventStream } from './helpers/eventstream';
 
 /**
@@ -112,34 +113,15 @@ export class AgentCoreHarness implements INodeType {
 			{
 				name: 'agentCoreApi',
 				required: true,
-				testedBy: 'agentCoreApiTest',
 			},
 		],
 		properties: [...harnessFields],
 	};
 
-	// Validates credentials when the user clicks "Test" in the n8n credential UI.
-	// Reuses the same helpers as execute() to ensure the test path mirrors runtime behavior.
-	methods = {
-		credentialTest: {
-			async agentCoreApiTest(
-				this: ICredentialTestFunctions,
-				credential: ICredentialsDecrypted<ICredentialDataDecryptedObject>,
-			): Promise<INodeCredentialTestResult> {
-				try {
-					const creds = credential.data!;
-					const region = getRegion(creds);
-					const awsCreds = getAwsCredentials(creds);
-
-					const client = new ControlClient({ region, credentials: awsCreds });
-					await client.listHarnesses({ maxResults: 1 });
-					return { status: 'OK', message: 'Connection successful' };
-				} catch (error) {
-					return { status: 'Error', message: (error as Error).message };
-				}
-			},
-		},
-	};
+	// The credential type (AgentCoreApi.credentials.ts) carries its own
+	// `test` request + `authenticate` signer, so n8n validates credentials
+	// through the credential itself. A node-level `testedBy` method would just
+	// duplicate that, so it is intentionally omitted.
 
 	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
 		const items = this.getInputData();
@@ -149,7 +131,14 @@ export class AgentCoreHarness implements INodeType {
 		const region = getRegion(creds);
 		const awsCreds = getAwsCredentials(creds);
 
-		const callerConfig = { region, credentials: awsCreds };
+		// Bind n8n's HTTP helper so the SDK-free transport layer sends requests
+		// through n8n's HTTP stack (proxy / logging / audit) instead of the global
+		// `fetch`. SigV4 signing still happens in our signer; we only hand the
+		// signed request to the helper.
+		const httpRequest: HttpRequestFn = (options) =>
+			this.helpers.httpRequest(options) as ReturnType<HttpRequestFn>;
+
+		const callerConfig: AwsCallerConfig = { region, credentials: awsCreds, httpRequest };
 		const controlClient = new ControlClient(callerConfig);
 
 		const staticData = this.getWorkflowStaticData('node') as NodeStaticData;
@@ -573,6 +562,7 @@ async function invoke(
 			qualifier: dispatch.qualifier || undefined,
 			runtimeUserId: dispatch.runtimeUserId || undefined,
 			body,
+			httpRequest: callerConfig.httpRequest,
 		});
 	}
 

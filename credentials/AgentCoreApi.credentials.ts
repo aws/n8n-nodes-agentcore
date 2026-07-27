@@ -150,6 +150,15 @@ export class AgentCoreApi implements ICredentialType {
 		);
 
 		requestOptions.headers = { ...(requestOptions.headers || {}), ...signedHeaders };
+		// Send the exact bytes we signed. SigV4 binds a hash of the request body
+		// into the signature, so the wire body must match the string we hashed
+		// above — if we left an object here, the HTTP layer could re-serialize it
+		// (key order, whitespace) and invalidate the signature. `json: false`
+		// stops the HTTP layer from re-parsing/re-encoding it.
+		if (body) {
+			requestOptions.body = body;
+			requestOptions.json = false;
+		}
 		return requestOptions;
 	};
 
