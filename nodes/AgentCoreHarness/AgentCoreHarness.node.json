@@ -1,6 +1,6 @@
 {
 	"node": "@aws/n8n-nodes-agentcore.agentCoreHarness",
-	"nodeVersion": "2.0",
+	"nodeVersion": "1.0",
 	"codexVersion": "1.0",
 	"categories": ["Development", "Utility"],
 	"alias": ["agent", "bedrock", "agentcore", "aws", "llm", "claude", "anthropic"],
