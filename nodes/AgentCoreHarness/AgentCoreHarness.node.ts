@@ -5,8 +5,6 @@
 import {
 	ApplicationError,
 	type ICredentialDataDecryptedObject,
-	type ICredentialsDecrypted,
-	type ICredentialTestFunctions,
 	type IDataObject,
 	type IExecuteFunctions,
 	type INodeCredentialTestResult,
@@ -94,7 +92,7 @@ export class AgentCoreHarness implements INodeType {
 		name: 'agentCoreHarness',
 		icon: 'file:agentcore.svg',
 		group: ['transform'],
-		version: 1,
+		version: 2,
 		subtitle:
 			'={{ $parameter["harnessArn"] ? "Invoke Existing harness" : ("Run Agent" + ($parameter["agentName"] ? ": " + $parameter["agentName"] : "")) }}',
 		description:
@@ -114,41 +112,25 @@ export class AgentCoreHarness implements INodeType {
 		outputs: [NodeConnectionTypes.Main],
 		credentials: [
 			{
+				// One credential carries everything: AWS keys for the control plane
+				// and SigV4 invoke, plus an optional OAuth Bearer Token used only for
+				// the OAuth invoke path. A single credential slot keeps the node UI
+				// clean and leaves the Authentication field as a normal body dropdown
+				// (a second, displayOptions-gated credential would make n8n hoist and
+				// hide that dropdown). AWS access is always present, so adding
+				// OAuth-authenticated control-plane calls later is a pure execute()
+				// change with no breaking migration.
 				name: 'agentCoreApi',
 				required: true,
-			},
-			{
-				// The OAuth Bearer token lives in its own credential, never in a
-				// node input field, so it can't leak into the workflow execution
-				// log. Shown and required only when OAuth Bearer auth is selected.
-				name: 'agentCoreBearerApi',
-				required: true,
-				displayOptions: { show: { authentication: ['oauthBearer'] } },
-				// A bearer JWT can't be network-tested without a specific harness's
-				// inbound authorizer, so we validate it offline (well-formed and
-				// not expired) via this node method rather than a live request.
-				testedBy: 'agentCoreBearerTest',
 			},
 		],
 		properties: [...harnessFields],
 	};
 
-	// The AWS-keys credential (AgentCoreApi) carries its own `test` request +
-	// `authenticate` signer, so it validates itself and needs no node method.
-	// The bearer credential (AgentCoreBearerApi) is different: a JWT can't be
-	// network-tested without a specific harness's inbound authorizer, so we
-	// validate it offline here (well-formed and not expired).
-	methods = {
-		credentialTest: {
-			async agentCoreBearerTest(
-				this: ICredentialTestFunctions,
-				credential: ICredentialsDecrypted<ICredentialDataDecryptedObject>,
-			): Promise<INodeCredentialTestResult> {
-				const token = ((credential.data?.bearerToken as string) || '').trim();
-				return validateBearerToken(token);
-			},
-		},
-	};
+	// The AgentCore API credential carries its own `test` request + `authenticate`
+	// signer, so it validates itself (AWS keys via ListHarnesses) and needs no
+	// node-level credential test method. The optional OAuth Bearer Token on that
+	// credential is validated at invoke time.
 
 	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
 		const items = this.getInputData();
@@ -578,14 +560,26 @@ async function invoke(
 	void qualifier;
 
 	if (authentication === 'oauthBearer') {
-		// The token comes from the dedicated bearer credential, never a node
-		// input field, so it stays out of the workflow execution log.
-		const bearerCreds = await ctx.getCredentials('agentCoreBearerApi', itemIndex);
-		const bearerToken = ((bearerCreds?.bearerToken as string) || '').trim();
+		// The token comes from the OAuth Bearer Token field on the AgentCore API
+		// credential — held in the credential vault, never a node input field, so
+		// it stays out of the workflow execution log. One credential carries both
+		// the AWS keys (control plane) and the optional bearer token (OAuth invoke).
+		const creds = await ctx.getCredentials('agentCoreApi', itemIndex);
+		const bearerToken = ((creds?.bearerToken as string) || '').trim();
 		if (!bearerToken) {
 			throw new NodeOperationError(
 				ctx.getNode(),
-				'OAuth Bearer authentication is selected but the Amazon Bedrock AgentCore Bearer API credential has no token. Add the credential and enter your JWT.',
+				'OAuth Bearer authentication is selected but the AgentCore API credential has no OAuth Bearer Token. Open the credential and enter your JWT, or switch Authentication to AWS SigV4.',
+				{ itemIndex },
+			);
+		}
+		// Fail fast with a clear message on a malformed or expired JWT, rather than
+		// letting AWS return an opaque 403.
+		const tokenCheck = validateBearerToken(bearerToken);
+		if (tokenCheck.status !== 'OK') {
+			throw new NodeOperationError(
+				ctx.getNode(),
+				`OAuth Bearer Token problem: ${tokenCheck.message}`,
 				{ itemIndex },
 			);
 		}
