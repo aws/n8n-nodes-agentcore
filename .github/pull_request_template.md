@@ -40,4 +40,4 @@ How did you verify this works?
 
 ---
 
-By submitting this pull request, I confirm my contribution is made under the terms of the project's Apache-2.0 license.
+By submitting this pull request, I confirm my contribution is made under the terms of the project's MIT license.

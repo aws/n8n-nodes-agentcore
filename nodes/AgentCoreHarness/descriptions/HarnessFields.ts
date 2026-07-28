@@ -322,7 +322,7 @@ export const harnessFields: INodeProperties[] = [
 			{ name: 'OAuth Bearer Token', value: 'oauthBearer' },
 		],
 		description:
-			'How to authenticate the InvokeHarness call. SigV4 uses the credential AWS keys. OAuth Bearer sends a JWT from the Amazon Bedrock AgentCore Bearer API credential (the harness must have an inbound OAuth authorizer configured). Control-plane operations (create/update/provision) always use SigV4.',
+			'How to authenticate the InvokeHarness call. SigV4 uses the credential AWS keys. OAuth Bearer sends the JWT from the OAuth Bearer Token field on the Amazon Bedrock AgentCore API credential (the harness must have an inbound OAuth authorizer configured). Control-plane operations (create/update/provision) always use SigV4.',
 	},
 
 	{

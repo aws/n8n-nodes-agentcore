@@ -2,10 +2,10 @@
 
 |                         |                                            |
 |-------------------------|--------------------------------------------|
-|**Status**               |v0.2 — pre-release, in private testing      |
+|**Status**               |v0.3.4 — released on npm                    |
 |**Owner**                |Amazon Bedrock AgentCore team               |
 |**Distribution**         |npm community node + AWS public GitHub org  |
-|**License**              |Apache-2.0                                  |
+|**License**              |MIT                                         |
 |**Audience for this doc**|Engineers, PMs, partners, security reviewers|
 
 -----
@@ -27,7 +27,7 @@ The node auto-provisions a harness on first execution, reuses it on subsequent r
 - **Managed memory auto-provisioning** (strategies + event expiry), with BYO-Memory-ARN and Disabled modes
 - **Skills** from the AWS curated catalog, Git, S3, and filesystem paths
 - **VPC networking, custom container images, and filesystem mounts** (session storage / EFS / S3 Files)
-- **OAuth Bearer-token invoke** via a raw-HTTPS path (the AWS SDK cannot Bearer-auth InvokeHarness)
+- **OAuth Bearer-token invoke** via n8n's HTTP request helper (InvokeHarness accepts a Bearer token from an inbound OAuth authorizer)
 - **Harness versioning and named endpoints** (list versions, create/pin endpoints, invoke by qualifier)
 - Streaming response handling with structured output (text, tool-use trace incl. parsed inline-function input, usage, latency) plus a provisioning summary (memory ARN, model, version)
 - Auto-provisioned harness lifecycle with workflow-static-data caching, AWS-as-source-of-truth on cache miss
@@ -69,7 +69,7 @@ Three audiences, in priority order:
 │   │ AgentCoreHarness node   │◀───│ n8n credential vault   │     │
 │   │                         │    │ (encrypted SQLite)     │     │
 │   │  - resolves harness     │    └────────────────────────┘     │
-│   │  - calls AWS SDK v3     │                                   │
+│   │  - inline SigV4 signing │                                   │
 │   │  - streams response     │                                   │
 │   └────────────┬────────────┘                                   │
 │                │                                                │
@@ -119,11 +119,12 @@ A single operation. The **Harness ARN** field is the mode discriminator: blank �
 |Model Options       |collection|no            |always    |API Key ARN, API Base URL, API Format, temperature, topP/K, model max tokens, additionalParams (JSON).         |
 |System Prompt       |string    |no            |always    |Agent instructions. Run mode: defaults if blank. Invoke mode: override if set.                                 |
 |Prompt              |string    |no            |always    |User message (n8n expressions supported). Optional only when sending Tool Results back.                        |
-|Tools               |collection|no            |always    |Browser, Code Interpreter, Gateway (+OAuth), remote MCP, inline functions. Invoke mode: override.             |
-|Skills              |collection|no            |always    |AWS catalog (globs) / Git / S3 / filesystem path. Run mode: baked in. Invoke mode: appended (invoke wins).     |
+|Add Tools           |boolean   |no            |always    |Toggle that reveals the Tools section (hidden until enabled).                                                  |
+|Tools               |collection|no            |Add Tools |Browser, Code Interpreter, Gateway (+OAuth), remote MCP, inline functions. Revealed by the Add Tools toggle. Invoke mode: override.|
+|Add Skills          |boolean   |no            |always    |Toggle that reveals the Skills section (hidden until enabled).                                                 |
+|Skills              |collection|no            |Add Skills|AWS catalog (globs) / Git / S3 / filesystem path. Revealed by the Add Skills toggle. Run mode: baked in. Invoke mode: appended (invoke wins).|
 |Session ID          |string    |no            |always    |For multi-turn continuity. Auto-generated (random UUID) when blank; stable value continues a conversation.     |
-|Authentication      |options   |no            |always    |AWS SigV4 (default) or OAuth Bearer Token. OAuth uses the raw-HTTPS invoke path.                                |
-|Bearer Token        |string    |yes (OAuth)   |OAuth     |JWT for the OAuth invoke path; operation-level so it can be bound to an upstream node via expression.           |
+|Authentication      |options   |no            |always    |AWS SigV4 (default) or OAuth Bearer Token. OAuth reads the Bearer token from the credential and invokes via n8n's HTTP request helper.|
 |Additional Options  |collection|no            |always    |Actor ID, Endpoint (Qualifier), Max Iterations, Max Tokens, Timeout, Runtime User ID. Invoke mode: overrides.  |
 |Tool Results        |collection|no            |always    |Inline-function round-trip: Tool Use ID, name, input, result content, status — replays assistant+user turn.    |
 |Provisioning Options|collection|no            |ARN blank |Memory Mode/Strategies/Expiry, Memory ARN (BYO), Container URI, Filesystem Mounts, List Versions, Endpoint Name/Target Version/Description, Force Recreate — lifecycle-only, hidden in invoke mode.|
@@ -139,7 +140,7 @@ A single operation. The **Harness ARN** field is the mode discriminator: blank �
 5. If not found: `CreateHarness`, poll `GetHarness` until READY (~30s)
 6. Optionally manage versions/endpoints (list versions, create/pin a named endpoint)
 7. `GetHarness` to summarize what was provisioned (memory ARN, model, version) for the output
-8. `InvokeHarness` (SigV4 SDK path) or raw-HTTPS Bearer path, streaming, accumulate response
+8. `InvokeHarness` (SigV4 path) or Bearer path, both via `this.helpers.httpRequest`, streaming, accumulate response
 
 ### Credential — `AgentCoreApi`
 
@@ -153,6 +154,7 @@ A single operation. The **Harness ARN** field is the mode discriminator: blank �
 |Network Mode          |no      |Public (default) or VPC — applies to auto-provisioned harnesses|
 |VPC Subnet IDs        |no (VPC)|Comma-separated; VPC mode only                              |
 |VPC Security Group IDs|no (VPC)|Comma-separated; VPC mode only                              |
+|OAuth Bearer Token    |no      |Optional JWT for the OAuth invoke path; used when Authentication = OAuth Bearer Token. Stored in the credential vault.|
 
 ## 6. Output shape
 
@@ -243,10 +245,10 @@ Because the node auto-provisions resources whose names it can't know in advance 
 ## 9. Security properties
 
 - **No local execution.** Zero `exec` / `spawn` / `eval` / file-system writes in the codebase (CI-enforced by the `no-eval` grep gate)
-- **Credentials never persisted by the node.** Read from n8n vault per execution, used by AWS SDK, released. The OAuth Bearer token is read per-execution from a node field, never logged
-- **TLS 1.2+ enforced** for all AWS communications (AWS SDK v3 default); the OAuth raw-HTTPS path uses the platform `fetch` over TLS
-- **SigV4 request signing** for the SDK path; OAuth path uses a caller-supplied JWT to the documented data-plane endpoint
-- **Two production dependencies** — only `@aws-sdk/client-bedrock-agentcore` and `@aws-sdk/client-bedrock-agentcore-control`, both Apache-2.0, AWS-maintained. v0.2 added no new production dependency: the OAuth event-stream decode reuses `@smithy/core/event-streams`, already transitive via the data-plane client
+- **Credentials never persisted by the node.** Read from n8n vault per execution, used to sign the request, released. The OAuth Bearer token is read per-execution from the credential vault (the OAuth Bearer Token credential field), never logged
+- **TLS 1.2+ enforced** for all AWS communications — requests go through n8n's `this.helpers.httpRequest`, which uses Node's HTTPS stack (all endpoints are hardcoded `https://`); there is no AWS SDK and no direct `fetch`
+- **Inline SigV4 request signing** (`helpers/sigv4.ts`, `node:crypto` only); the OAuth path uses a caller-supplied JWT to the documented data-plane endpoint
+- **Zero production dependencies.** AWS calls use n8n's `this.helpers.httpRequest` with an inline SigV4 signer (`helpers/sigv4.ts`, `node:crypto` only) and an inline event-stream decoder (`helpers/eventstream.ts`). `@aws-sdk/*` and `@smithy/*` are devDependencies only, used for offline signer-parity tests
 - **TypeScript strict mode** enforced
 - **Confused-deputy mitigation** via `aws:SourceAccount` + `aws:SourceArn` conditions in trust policy
 - **Shared-responsibility passthrough.** Per the AgentCore security model, `additionalParams`/`apiBase`/`modelId` and the `skills` field are caller-controllable and can redirect inference or load arbitrary instructions. The node does not sanitize them (consistent with the service trust model); workflow authors exposing the node to untrusted callers must validate these — documented in README and the migration notes
@@ -255,14 +257,21 @@ Because the node auto-provisions resources whose names it can't know in advance 
 
 ### Runtime
 
-- `@aws-sdk/client-bedrock-agentcore` (^3.1071.0)
-- `@aws-sdk/client-bedrock-agentcore-control` (^3.1071.0)
+- **None.** The package ships with zero production dependencies (n8n
+  community-node verification and n8n Cloud forbid runtime dependencies). AWS
+  calls are made through n8n's `this.helpers.httpRequest` helper. Request signing
+  is done by an inline SigV4 signer (`helpers/sigv4.ts`, `node:crypto` only), and
+  streaming responses are parsed by an inline event-stream decoder
+  (`helpers/eventstream.ts`). The AWS SDK was removed for exactly this reason.
 
-  v0.2 bumped these from the 3.1058.x line, which predated the GA harness
-  endpoint/version commands, managed-memory union member, and AWS skills (and,
-  being a schema-serde SDK, silently dropped unknown union members). The OAuth
-  path's event-stream codec comes from `@smithy/core/event-streams`, a transitive
-  dependency of the data-plane client — no new direct dependency.
+### devDependencies (test only)
+
+- `@aws-sdk/client-bedrock-agentcore` (^3.1075.0)
+- `@aws-sdk/client-bedrock-agentcore-control` (^3.1075.0)
+
+  Retained only as devDependencies (along with `@smithy/*`) for the offline
+  signer-parity and event-stream-decoder tests. They must never move to
+  `dependencies`.
 
 ### Peer
 
@@ -309,10 +318,13 @@ AWS setup runbook are maintained by the team outside the published package.
 
 ### Automated tests
 
-Offline verification for v0.2 validated every payload builder against the
-installed SDK type defs and exercised the full `execute()` path with mocked
-clients. Jest unit tests and CI integration tests against real AgentCore remain
-planned.
+Unit tests live in `test/` and run with vitest — pure and offline (mocked
+`this.helpers.httpRequest`/`fetch`, fixture bytes), so they run in CI on every PR
+with no AWS credentials or network. The inline SigV4 signer (`helpers/sigv4.ts`),
+the inline event-stream decoder (`helpers/eventstream.ts`), and the config
+builders are directly covered; the signer and decoder are checked for parity
+against the `@aws-sdk/*` / `@smithy/*` devDependencies. CI integration tests
+against real AgentCore remain planned.
 
 ## 13. Versioning and compatibility
 
@@ -357,4 +369,5 @@ default model is Claude Sonnet 4.6.
 |Version|Date             |Notes                                                                                                               |
 |-------|-----------------|--------------------------------------------------------------------------------------------------------------------|
 |0.1.0  |TBD (pre-release)|Initial release: single operation (auto-provision or bring-your-own-ARN), MCP/Browser/Code Interpreter/Gateway tools|
-|0.2.0  |TBD (pre-release)|Multi-provider models, managed memory, VPC, custom containers, filesystem mounts, skills, inline functions, OAuth Bearer invoke, versions & endpoints. SDK bumped to ^3.1071.0.|
+|0.2.0  |TBD (pre-release)|Multi-provider models, managed memory, VPC, custom containers, filesystem mounts, skills, inline functions, OAuth Bearer invoke, versions & endpoints.|
+|0.3.x  |2026             |Runtime became SDK-free / zero-dependency: AWS calls go through n8n's `this.helpers.httpRequest` with an inline SigV4 signer (`helpers/sigv4.ts`) and inline event-stream decoder (`helpers/eventstream.ts`); `@aws-sdk/*` and `@smithy/*` are now devDependencies only (^3.1075.0). OAuth Bearer token moved from a node field to an optional field on the `AgentCoreApi` credential. License is MIT.|
