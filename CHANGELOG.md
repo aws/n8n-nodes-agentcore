@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-07-27
+
+### Changed
+
+- **OAuth Bearer Token moved to the credential.** The bearer JWT is now an
+  optional password field on the Amazon Bedrock AgentCore API credential
+  instead of a node input field, so the secret is stored in the credential
+  vault and never appears in node input or the workflow execution log. Set
+  Authentication to OAuth Bearer Token on the node and enter the JWT on the
+  credential. **Breaking for OAuth workflows:** re-enter any bearer token on the
+  credential; it can no longer be bound per-execution from an upstream node.
+- **Node `typeVersion` bumped 1 → 2.** The Bearer Token node field was removed,
+  so existing node placements keep their v1 field set; re-add or re-save the
+  node to pick up v2 (Add Tools / Add Skills toggles, OAuth via credential).
+- **AWS calls now go through n8n's HTTP request helper** (`this.helpers.httpRequest`)
+  instead of the global `fetch`, so requests honor n8n's proxy, logging, and
+  auditing. SigV4 signing is unchanged.
+
+### Added
+
+- **Add Tools / Add Skills toggles.** The Tools and Skills sections are hidden
+  until you turn on the respective toggle, keeping the node compact.
+
+### Removed
+
+- **Node-level credential test.** The credential validates itself (its own
+  `test` request + `authenticate` signer), so the duplicate node test method was
+  removed.
+
 ## [0.2.0] - 2026-06-24
 
 ### Added

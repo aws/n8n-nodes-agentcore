@@ -5,8 +5,6 @@
 import {
 	ApplicationError,
 	type ICredentialDataDecryptedObject,
-	type ICredentialTestFunctions,
-	type ICredentialsDecrypted,
 	type IDataObject,
 	type IExecuteFunctions,
 	type INodeCredentialTestResult,
@@ -45,7 +43,11 @@ import {
 } from './helpers/client';
 import { consumeStream } from './helpers/stream';
 import { ControlClient } from './helpers/controlClient';
-import { invokeHarnessStream, type AwsCallerConfig } from './helpers/httpClient';
+import {
+	invokeHarnessStream,
+	type AwsCallerConfig,
+	type HttpRequestFn,
+} from './helpers/httpClient';
 import { decodeEventStream } from './helpers/eventstream';
 
 /**
@@ -90,7 +92,7 @@ export class AgentCoreHarness implements INodeType {
 		name: 'agentCoreHarness',
 		icon: 'file:agentcore.svg',
 		group: ['transform'],
-		version: 1,
+		version: 2,
 		subtitle:
 			'={{ $parameter["harnessArn"] ? "Invoke Existing harness" : ("Run Agent" + ($parameter["agentName"] ? ": " + $parameter["agentName"] : "")) }}',
 		description:
@@ -110,36 +112,25 @@ export class AgentCoreHarness implements INodeType {
 		outputs: [NodeConnectionTypes.Main],
 		credentials: [
 			{
+				// One credential carries everything: AWS keys for the control plane
+				// and SigV4 invoke, plus an optional OAuth Bearer Token used only for
+				// the OAuth invoke path. A single credential slot keeps the node UI
+				// clean and leaves the Authentication field as a normal body dropdown
+				// (a second, displayOptions-gated credential would make n8n hoist and
+				// hide that dropdown). AWS access is always present, so adding
+				// OAuth-authenticated control-plane calls later is a pure execute()
+				// change with no breaking migration.
 				name: 'agentCoreApi',
 				required: true,
-				testedBy: 'agentCoreApiTest',
 			},
 		],
 		properties: [...harnessFields],
 	};
 
-	// Validates credentials when the user clicks "Test" in the n8n credential UI.
-	// Reuses the same helpers as execute() to ensure the test path mirrors runtime behavior.
-	methods = {
-		credentialTest: {
-			async agentCoreApiTest(
-				this: ICredentialTestFunctions,
-				credential: ICredentialsDecrypted<ICredentialDataDecryptedObject>,
-			): Promise<INodeCredentialTestResult> {
-				try {
-					const creds = credential.data!;
-					const region = getRegion(creds);
-					const awsCreds = getAwsCredentials(creds);
-
-					const client = new ControlClient({ region, credentials: awsCreds });
-					await client.listHarnesses({ maxResults: 1 });
-					return { status: 'OK', message: 'Connection successful' };
-				} catch (error) {
-					return { status: 'Error', message: (error as Error).message };
-				}
-			},
-		},
-	};
+	// The AgentCore API credential carries its own `test` request + `authenticate`
+	// signer, so it validates itself (AWS keys via ListHarnesses) and needs no
+	// node-level credential test method. The optional OAuth Bearer Token on that
+	// credential is validated at invoke time.
 
 	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
 		const items = this.getInputData();
@@ -149,7 +140,14 @@ export class AgentCoreHarness implements INodeType {
 		const region = getRegion(creds);
 		const awsCreds = getAwsCredentials(creds);
 
-		const callerConfig = { region, credentials: awsCreds };
+		// Bind n8n's HTTP helper so the SDK-free transport layer sends requests
+		// through n8n's HTTP stack (proxy / logging / audit) instead of the global
+		// `fetch`. SigV4 signing still happens in our signer; we only hand the
+		// signed request to the helper.
+		const httpRequest: HttpRequestFn = (options) =>
+			this.helpers.httpRequest(options) as ReturnType<HttpRequestFn>;
+
+		const callerConfig: AwsCallerConfig = { region, credentials: awsCreds, httpRequest };
 		const controlClient = new ControlClient(callerConfig);
 
 		const staticData = this.getWorkflowStaticData('node') as NodeStaticData;
@@ -211,10 +209,15 @@ function resolveConfig(
 	const systemPrompt =
 		applyDefaults && !systemPromptRaw.trim() ? DEFAULT_SYSTEM_PROMPT : systemPromptRaw;
 
-	const toolsUi = ctx.getNodeParameter('tools', itemIndex, {}) as IDataObject;
+	// The Add Tools / Add Skills toggles gate the fields in the UI. n8n still
+	// returns a hidden field's stored value, so we honor the toggle here too:
+	// what the user sees enabled is exactly what gets sent.
+	const addTools = ctx.getNodeParameter('addTools', itemIndex, false) as boolean;
+	const toolsUi = addTools ? (ctx.getNodeParameter('tools', itemIndex, {}) as IDataObject) : {};
 	const tools = buildToolsArray(toolsUi);
 
-	const skillsUi = ctx.getNodeParameter('skills', itemIndex, {}) as IDataObject;
+	const addSkills = ctx.getNodeParameter('addSkills', itemIndex, false) as boolean;
+	const skillsUi = addSkills ? (ctx.getNodeParameter('skills', itemIndex, {}) as IDataObject) : {};
 	const skills = buildSkillsArray(skillsUi);
 
 	const additional = ctx.getNodeParameter('additionalOptions', itemIndex, {}) as IDataObject;
@@ -557,11 +560,26 @@ async function invoke(
 	void qualifier;
 
 	if (authentication === 'oauthBearer') {
-		const bearerToken = (ctx.getNodeParameter('bearerToken', itemIndex, '') as string).trim();
+		// The token comes from the OAuth Bearer Token field on the AgentCore API
+		// credential — held in the credential vault, never a node input field, so
+		// it stays out of the workflow execution log. One credential carries both
+		// the AWS keys (control plane) and the optional bearer token (OAuth invoke).
+		const creds = await ctx.getCredentials('agentCoreApi', itemIndex);
+		const bearerToken = ((creds?.bearerToken as string) || '').trim();
 		if (!bearerToken) {
 			throw new NodeOperationError(
 				ctx.getNode(),
-				'OAuth Bearer authentication selected but no Bearer Token was provided.',
+				'OAuth Bearer authentication is selected but the AgentCore API credential has no OAuth Bearer Token. Open the credential and enter your JWT, or switch Authentication to AWS SigV4.',
+				{ itemIndex },
+			);
+		}
+		// Fail fast with a clear message on a malformed or expired JWT, rather than
+		// letting AWS return an opaque 403.
+		const tokenCheck = validateBearerToken(bearerToken);
+		if (tokenCheck.status !== 'OK') {
+			throw new NodeOperationError(
+				ctx.getNode(),
+				`OAuth Bearer Token problem: ${tokenCheck.message}`,
 				{ itemIndex },
 			);
 		}
@@ -573,6 +591,7 @@ async function invoke(
 			qualifier: dispatch.qualifier || undefined,
 			runtimeUserId: dispatch.runtimeUserId || undefined,
 			body,
+			httpRequest: callerConfig.httpRequest,
 		});
 	}
 
@@ -693,6 +712,42 @@ function parseFilesystemMounts(mountsUi: IDataObject | undefined): FilesystemMou
 }
 
 /* ----- validators ----- */
+
+/**
+ * Offline validation for the bearer credential's "Test" button. A JWT can't be
+ * checked against the service without a specific harness's inbound authorizer,
+ * so we do the two checks that catch real problems locally: that the token is a
+ * well-formed JWT (three dot-separated base64url segments with a decodable JSON
+ * payload) and that it is not already expired (`exp` claim, if present). No
+ * network call and no secret is logged — only the pass/fail status is returned.
+ */
+export function validateBearerToken(token: string): INodeCredentialTestResult {
+	if (!token) {
+		return { status: 'Error', message: 'No bearer token provided.' };
+	}
+	const parts = token.split('.');
+	if (parts.length !== 3 || parts.some((p) => p.length === 0)) {
+		return {
+			status: 'Error',
+			message: 'Token is not a well-formed JWT (expected three dot-separated segments).',
+		};
+	}
+	let payload: Record<string, unknown>;
+	try {
+		const json = Buffer.from(parts[1], 'base64url').toString('utf8');
+		payload = JSON.parse(json) as Record<string, unknown>;
+	} catch {
+		return { status: 'Error', message: 'Token payload is not valid base64url-encoded JSON.' };
+	}
+	const exp = payload.exp;
+	if (typeof exp === 'number') {
+		const nowSeconds = Math.floor(Date.now() / 1000);
+		if (exp <= nowSeconds) {
+			return { status: 'Error', message: 'Token has expired. Issue a fresh token and try again.' };
+		}
+	}
+	return { status: 'OK', message: 'Token is a well-formed JWT and not expired.' };
+}
 
 function validateAgentName(name: string): void {
 	if (!/^[A-Za-z][A-Za-z0-9_]{0,39}$/.test(name)) {

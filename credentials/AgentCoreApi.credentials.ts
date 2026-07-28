@@ -49,6 +49,15 @@ export class AgentCoreApi implements ICredentialType {
 				'Optional. Required only when using temporary credentials (for example, from STS).',
 		},
 		{
+			displayName: 'OAuth Bearer Token',
+			name: 'bearerToken',
+			type: 'string',
+			typeOptions: { password: true },
+			default: '',
+			description:
+				'Optional. A JWT from your identity provider, used only when the node Authentication is set to OAuth Bearer Token, to invoke a harness protected by an inbound OAuth authorizer. Stored encrypted and never shown in node input or execution logs. Leave blank for AWS SigV4 authentication. The AWS keys above are still used for all control-plane operations.',
+		},
+		{
 			displayName: 'Region',
 			name: 'region',
 			type: 'options',
@@ -150,6 +159,15 @@ export class AgentCoreApi implements ICredentialType {
 		);
 
 		requestOptions.headers = { ...(requestOptions.headers || {}), ...signedHeaders };
+		// Send the exact bytes we signed. SigV4 binds a hash of the request body
+		// into the signature, so the wire body must match the string we hashed
+		// above — if we left an object here, the HTTP layer could re-serialize it
+		// (key order, whitespace) and invalidate the signature. `json: false`
+		// stops the HTTP layer from re-parsing/re-encoding it.
+		if (body) {
+			requestOptions.body = body;
+			requestOptions.json = false;
+		}
 		return requestOptions;
 	};
 

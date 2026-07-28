@@ -28,7 +28,7 @@ n8n’s native AI Agent node is great for simple agents, but hits walls fast: no
 - **Inline tool configuration** — AgentCore Browser, Code Interpreter, Gateway (with optional OAuth outbound auth), remote MCP servers, and inline functions
 - **Skills** (v0.2) — AWS curated catalog, Git, S3, and filesystem-path sources
 - **VPC, custom containers, and filesystem mounts** (v0.2) — run in your VPC, bring a linux/arm64 ECR image, mount session storage / EFS / S3 Files
-- **OAuth Bearer invoke** (v0.2) — invoke inbound-OAuth harnesses with a JWT from an upstream node
+- **OAuth Bearer invoke** (v0.2) — invoke inbound-OAuth harnesses with a JWT stored on the AgentCore API credential
 - **Versions & endpoints** (v0.2) — list immutable versions, pin named endpoints, invoke by qualifier
 - **Streaming responses** with structured tool-use trace, token usage, and latency metadata
 - **Session persistence** — pass the same session ID across executions for multi-turn conversations
@@ -130,6 +130,7 @@ In n8n, go to **Credentials → New → Amazon Bedrock AgentCore API** and fill 
 |Access Key ID     |From your IAM user                            |
 |Secret Access Key |From your IAM user                            |
 |Session Token     |Optional. Only for temporary STS credentials. |
+|OAuth Bearer Token|Optional. JWT for OAuth-protected harnesses; used only when the node Authentication is set to OAuth Bearer Token. Leave blank for AWS SigV4. |
 |Region            |The AgentCore-supported region you want to use|
 |Execution Role ARN|The role ARN from Step 1                      |
 
@@ -141,7 +142,7 @@ The node has a single operation. The **Harness ARN** field decides the mode.
 
 ### Leave Harness ARN blank — Run Agent
 
-Type an Agent Name, set the system prompt and prompt, configure tools, and run. The node:
+Type an Agent Name, set the system prompt and prompt, optionally turn on **Add Tools** to configure tools, and run. The node:
 
 - Creates the harness on first execution (~30 seconds), stores the ARN in workflow static data
 - Reuses the same harness on subsequent runs (~3 seconds)
@@ -212,12 +213,14 @@ So: short-term continuity needs a stable **Session ID**; long-term recall needs
 
 ### Tools & skills
 
-Tools now include **Gateway** with optional OAuth outbound auth and **Inline
-Functions**, alongside Browser, Code Interpreter, and remote MCP. **Skills** load
-domain knowledge on demand from the AWS catalog (glob patterns), Git, S3, or a
-filesystem path. (Need web search? Point a Remote MCP tool at a search MCP
-server — a managed `agentcore_web_search` type is documented by AgentCore but not
-yet accepted by the harness API.)
+Turn on the **Add Tools** toggle to reveal the Tools section, and **Add Skills**
+to reveal the Skills section (both are hidden by default to keep the node
+compact). Tools now include **Gateway** with optional OAuth outbound auth and
+**Inline Functions**, alongside Browser, Code Interpreter, and remote MCP.
+**Skills** load domain knowledge on demand from the AWS catalog (glob patterns),
+Git, S3, or a filesystem path. (Need web search? Point a Remote MCP tool at a
+search MCP server — a managed `agentcore_web_search` type is documented by
+AgentCore but not yet accepted by the harness API.)
 
 #### Inline-function round-trip
 
@@ -247,10 +250,11 @@ S3 Files access points require VPC).
 ### OAuth Bearer invoke
 
 For a harness with an inbound OAuth (JWT) authorizer, set **Authentication =
-OAuth Bearer Token** and populate **Bearer Token** (an operation-level field, so
-you can wire it from an upstream auth node via `={{ $json.id_token }}`). The node
-makes a raw HTTPS request to InvokeHarness because the AWS SDK cannot attach a
-Bearer token. Provisioning and other control-plane calls always use SigV4.
+OAuth Bearer Token** on the node, and enter your JWT in the **OAuth Bearer
+Token** field of the Amazon Bedrock AgentCore API credential. The node invokes
+InvokeHarness over HTTPS (through n8n's HTTP request helper) with an
+`Authorization: Bearer …` header; provisioning and all other control-plane calls
+still use the credential's AWS keys with SigV4.
 
 #### Bearer token security (bring-your-own JWT)
 
@@ -259,14 +263,15 @@ only. The token is a **JWT issued by your identity provider** (e.g. Amazon
 Cognito or any OIDC IdP), not an AWS SigV4 / Bedrock API key. The node does
 **not** mint, exchange, or derive it — it is strictly **bring-your-own**: you
 supply the JWT and the node passes it through verbatim as the
-`Authorization: Bearer …` header. It is read per-execution from a
-password-masked field and is never logged or persisted by the node. Because you
-own the token, follow these practices:
+`Authorization: Bearer …` header. It is stored encrypted in the n8n credential
+vault (never in the workflow JSON), read per-execution, and never logged.
+Because you own the token, follow these practices:
 
-- **Use short-lived JWTs from your IdP.** Obtain the token per workflow run from
-  an upstream auth step (e.g. a Cognito/OIDC login node) rather than pasting a
-  long-lived token into the field. Configure a short token TTL at the IdP so a
-  leaked token has a small exposure window.
+- **Prefer short-lived JWTs and rotate them.** The token is a static value on
+  the credential, so set a short TTL at your IdP and update the credential when
+  it expires. The node validates the token is a well-formed, unexpired JWT
+  before calling AWS, so an expired token fails fast with a clear message rather
+  than an opaque 401.
 - **Constrain the authorizer.** The inbound JWT authorizer is IdP-agnostic and
   validates tokens against the discovery URL plus any of: allowed **audiences**
   (`aud`), allowed **clients** (`client_id`), allowed **scopes**, and required
@@ -276,10 +281,9 @@ own the token, follow these practices:
   [inbound JWT authorizer](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/inbound-jwt-authorizer.html).
 - **Plan for revocation and rotation.** Revoke at the IdP (rotate signing keys,
   revoke the session/refresh token, or disable the client) if a token is
-  exposed. Don't hard-code tokens in saved workflows — bind them from an upstream
-  auth node so they refresh automatically and never persist in the workflow JSON.
-- **Treat the token as a secret in your workflow.** If it flows through other
-  nodes, avoid logging it; the node itself masks and never persists it.
+  exposed, then update or clear the credential.
+- **Keep the token in the credential, not in workflow data.** Storing it on the
+  credential keeps it out of the workflow JSON and execution logs.
 
 For the full inbound-OAuth setup and how end-user identity threads through to
 downstream tools, see
@@ -312,7 +316,7 @@ The `examples/` folder has importable workflows:
 2. **`02-code-interpreter.json`** — Data analyst agent that writes and runs Python
 3. **`03-multiturn-support.json`** — Webhook-triggered support agent with session persistence
 4. **`04-multi-provider-switch.json`** — Bedrock on turn 1, Gemini via LiteLLM on turn 2, same session (v0.2)
-5. **`05-oauth-invoke.json`** — Fetch a Cognito token, then invoke an OAuth-protected harness with the Bearer token (v0.2)
+5. **`05-oauth-invoke.json`** — Invoke an OAuth-protected harness with a Bearer token set on the AgentCore API credential (v0.2)
 6. **`06-skills-agent.json`** — Agent loading AWS catalog + Git + S3 skills (v0.2)
 7. **`07-inline-function-roundtrip.json`** — Inline function tool_use → compute result → send it back (v0.2)
 8. **`08-vpc-filesystem.json`** — VPC harness with an EFS access-point mount (v0.2)

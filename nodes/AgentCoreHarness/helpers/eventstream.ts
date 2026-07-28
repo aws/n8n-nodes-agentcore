@@ -51,54 +51,87 @@ function crc32(bytes: Uint8Array, start: number, end: number): number {
 }
 
 /**
- * Consumes a Web ReadableStream of bytes and yields one decoded event object
- * per frame, shaped as `{ [memberName]: payloadJson }` — exactly what
- * `consumeStream` keys off (`event.contentBlockDelta`, `event.messageStop`,
- * exception envelopes, etc.). This matches the SDK's decoded event shape, so
- * the SigV4 and OAuth invoke paths share one accumulator.
+ * A byte source we can decode. The SigV4 and OAuth invoke paths both go through
+ * n8n's `httpRequest` helper with `encoding: 'stream'`, which yields a Node
+ * `Readable`; the offline unit tests feed a Web `ReadableStream`. We accept
+ * either so one decoder serves both.
+ *
+ * A Node `Readable` is typed structurally (async-iterable of byte chunks)
+ * rather than imported from `node:stream`, because n8n Cloud's verification
+ * linter only allows a small module allowlist (which excludes `node:stream`).
+ * The async-iterable shape is all this decoder actually consumes.
+ */
+export type NodeReadable = AsyncIterable<Uint8Array>;
+export type ByteStream = ReadableStream<Uint8Array> | NodeReadable;
+
+/**
+ * Consumes a byte stream and yields one decoded event object per frame, shaped
+ * as `{ [memberName]: payloadJson }` — exactly what `consumeStream` keys off
+ * (`event.contentBlockDelta`, `event.messageStop`, exception envelopes, etc.).
+ * This matches the SDK's decoded event shape, so the SigV4 and OAuth invoke
+ * paths share one accumulator.
  */
 export async function* decodeEventStream(
-	body: ReadableStream<Uint8Array>,
+	body: ByteStream,
 ): AsyncGenerator<IDataObject, void, unknown> {
-	const reader = body.getReader();
 	let buffer: Uint8Array = new Uint8Array(0);
 
-	try {
+	for await (const chunk of iterateChunks(body)) {
+		if (!chunk || chunk.length === 0) continue;
+
+		buffer = concat(buffer, chunk);
+
+		// Emit every complete frame currently buffered.
 		for (;;) {
-			const { done, value } = await reader.read();
-			if (done) break;
-			if (!value || value.length === 0) continue;
-
-			buffer = concat(buffer, value);
-
-			// Emit every complete frame currently buffered.
-			for (;;) {
-				if (buffer.length < 12) break; // need at least the prelude
-				const view = new DataView(buffer.buffer, buffer.byteOffset, buffer.length);
-				const totalLength = view.getUint32(0, false);
-				if (totalLength < 16 || totalLength > 16 * 1024 * 1024) {
-					throw new Error(`event-stream: implausible frame length ${totalLength}`);
-				}
-				if (buffer.length < totalLength) break; // frame not fully arrived yet
-
-				const frame = buffer.subarray(0, totalLength);
-				const event = decodeFrame(frame);
-				if (event) yield event;
-
-				buffer = buffer.subarray(totalLength);
+			if (buffer.length < 12) break; // need at least the prelude
+			const view = new DataView(buffer.buffer, buffer.byteOffset, buffer.length);
+			const totalLength = view.getUint32(0, false);
+			if (totalLength < 16 || totalLength > 16 * 1024 * 1024) {
+				throw new Error(`event-stream: implausible frame length ${totalLength}`);
 			}
-		}
+			if (buffer.length < totalLength) break; // frame not fully arrived yet
 
-		// A well-formed stream ends on a frame boundary. Leftover bytes mean the
-		// response was truncated mid-frame; surface that as an error rather than
-		// letting the caller treat a partial response as a complete result.
-		if (buffer.length > 0) {
-			throw new Error(
-				`event-stream: truncated response, ${buffer.length} trailing byte(s) after the last complete frame`,
-			);
+			const frame = buffer.subarray(0, totalLength);
+			const event = decodeFrame(frame);
+			if (event) yield event;
+
+			buffer = buffer.subarray(totalLength);
 		}
-	} finally {
-		reader.releaseLock();
+	}
+
+	// A well-formed stream ends on a frame boundary. Leftover bytes mean the
+	// response was truncated mid-frame; surface that as an error rather than
+	// letting the caller treat a partial response as a complete result.
+	if (buffer.length > 0) {
+		throw new Error(
+			`event-stream: truncated response, ${buffer.length} trailing byte(s) after the last complete frame`,
+		);
+	}
+}
+
+/**
+ * Yields `Uint8Array` chunks from either a Web `ReadableStream` (which exposes
+ * `getReader()`) or a Node `Readable` (which is async-iterable and yields
+ * `Buffer`s). Normalizing here keeps the frame loop above source-agnostic.
+ */
+async function* iterateChunks(body: ByteStream): AsyncGenerator<Uint8Array, void, unknown> {
+	if (typeof (body as ReadableStream<Uint8Array>).getReader === 'function') {
+		const reader = (body as ReadableStream<Uint8Array>).getReader();
+		try {
+			for (;;) {
+				const { done, value } = await reader.read();
+				if (done) break;
+				if (value) yield value;
+			}
+		} finally {
+			reader.releaseLock();
+		}
+		return;
+	}
+
+	// Node Readable: async-iterable, yields Buffer (a Uint8Array subclass).
+	for await (const chunk of body as NodeReadable) {
+		yield chunk as Uint8Array;
 	}
 }
 
