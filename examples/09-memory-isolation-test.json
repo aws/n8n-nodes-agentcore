@@ -1,0 +1,489 @@
+{
+  "name": "AgentCore — Memory Persistence & Actor Isolation Test",
+  "meta": {
+    "instanceId": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Memory persistence & actor isolation test\n\nGo/no-go check for the two claims every memory-based template depends on.\n\n### How it works\nThree webhook paths hit ONE auto-provisioned harness with managed memory.\n\n1. `POST /memory-test-store`: actor A stores a codename.\n2. `POST /memory-test-recall` — actor A asks for it back, in a **separate execution**. Must return the codename.\n3. `POST /memory-test-isolate`: actor B asks the same question on the **same Session ID**. Must NOT return the codename.\n\nThe verdict node asserts each result and returns `pass: true|false`, so you never have to eyeball the prose.\n\n### Setup\n1. Add an **Amazon Bedrock AgentCore API** credential (AWS keys, region, execution role ARN).\n2. Select it on all three AgentCore nodes.\n3. Activate the workflow, then run the three curl commands in the grey sticky **in order**.\n\nStep 1 provisions the harness and takes ~30 seconds. Steps 2 and 3 return in a few seconds.\n\n### Why it matters\nRecall proves memory survives across executions. Isolation proves one actor's memory never reaches another. Both must pass before any template claims per-user memory.",
+        "height": 660,
+        "width": 460
+      },
+      "id": "sticky-overview",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1180,
+        -40
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Run these in order\n\n```\ncurl -X POST \\\n  <base>/memory-test-store\n\ncurl -X POST \\\n  <base>/memory-test-recall\n\ncurl -X POST \\\n  <base>/memory-test-isolate\n```\n\nWait ~15s between calls. Copy `<base>` from a Webhook node's Production URL.",
+        "height": 220,
+        "width": 1000,
+        "color": 7
+      },
+      "id": "sticky-curl",
+      "name": "Sticky Note1",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -120,
+        880
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 1. Store (actor A)\nWrites the codename into managed memory under `actor-a`.",
+        "height": 200,
+        "width": 1000,
+        "color": 7
+      },
+      "id": "sticky-store",
+      "name": "Sticky Note2",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -120,
+        -40
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 2. Recall (actor A, separate execution)\nSame Actor ID, same Session ID, brand new execution. Expects the codename back.",
+        "height": 200,
+        "width": 1000,
+        "color": 7
+      },
+      "id": "sticky-recall",
+      "name": "Sticky Note3",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -120,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 3. Isolate (actor B, same session)\nOnly the Actor ID changes. A leak here means per-user memory is unsafe to ship.",
+        "height": 200,
+        "width": 1000,
+        "color": 7
+      },
+      "id": "sticky-isolate",
+      "name": "Sticky Note4",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -120,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cfg-1",
+              "name": "agentName",
+              "type": "string",
+              "value": "memory_isolation_test"
+            },
+            {
+              "id": "cfg-2",
+              "name": "sessionId",
+              "type": "string",
+              "value": "memory-test-session-please-change-me-0001"
+            },
+            {
+              "id": "cfg-3",
+              "name": "actorA",
+              "type": "string",
+              "value": "actor-a"
+            },
+            {
+              "id": "cfg-4",
+              "name": "actorB",
+              "type": "string",
+              "value": "actor-b"
+            },
+            {
+              "id": "cfg-5",
+              "name": "secret",
+              "type": "string",
+              "value": "AURORA"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "config-store",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        140,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "path": "memory-test-store",
+        "httpMethod": "POST",
+        "options": {}
+      },
+      "id": "wh-store",
+      "name": "1. Store Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -60,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "agentName": "={{ $json.agentName }}",
+        "systemPrompt": "You are a memory test fixture. Follow instructions literally. Never guess a codename you were not told. Do not use any tools.",
+        "prompt": "=Remember this for later: my project codename is {{ $json.secret }}. Reply with exactly: STORED {{ $json.secret }}",
+        "sessionId": "={{ $json.sessionId }}",
+        "additionalOptions": {
+          "actorId": "={{ $json.actorA }}",
+          "timeoutSeconds": 300
+        },
+        "provisioningOptions": {
+          "memoryMode": "managed"
+        }
+      },
+      "id": "agent-store",
+      "name": "Store Codename (Actor A)",
+      "type": "@aws/n8n-nodes-agentcore.agentCoreHarness",
+      "typeVersion": 2,
+      "position": [
+        420,
+        40
+      ],
+      "credentials": {
+        "agentCoreApi": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "Amazon Bedrock AgentCore API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Defensive: the agent may wrap text in fences or add prose.\nconst raw = String($json.response ?? '');\nconst secret = 'AURORA';\nreturn [{\n  json: {\n    step: 'store',\n    pass: raw.toUpperCase().includes(secret),\n    expected: `text containing ${secret}`,\n    sessionSource: $json.sessionSource,\n    memoryArn: $json.harness?.memory?.arn ?? null,\n    harnessVersion: $json.harness?.version ?? null,\n    response: raw.slice(0, 400),\n  },\n}];"
+      },
+      "id": "verdict-store",
+      "name": "Verdict: Stored",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        700,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "path": "memory-test-recall",
+        "httpMethod": "POST",
+        "options": {}
+      },
+      "id": "wh-recall",
+      "name": "2. Recall Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -60,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cfg-r1",
+              "name": "agentName",
+              "type": "string",
+              "value": "memory_isolation_test"
+            },
+            {
+              "id": "cfg-r2",
+              "name": "sessionId",
+              "type": "string",
+              "value": "memory-test-session-please-change-me-0001"
+            },
+            {
+              "id": "cfg-r3",
+              "name": "actorA",
+              "type": "string",
+              "value": "actor-a"
+            },
+            {
+              "id": "cfg-r4",
+              "name": "secret",
+              "type": "string",
+              "value": "AURORA"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "config-recall",
+      "name": "Config (Recall)",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        140,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "agentName": "={{ $json.agentName }}",
+        "systemPrompt": "You are a memory test fixture. Follow instructions literally. Never guess a codename you were not told. Do not use any tools.",
+        "prompt": "What is my project codename? Reply with only the codename, or exactly: I DO NOT KNOW.",
+        "sessionId": "={{ $json.sessionId }}",
+        "additionalOptions": {
+          "actorId": "={{ $json.actorA }}",
+          "timeoutSeconds": 300
+        },
+        "provisioningOptions": {
+          "memoryMode": "managed"
+        }
+      },
+      "id": "agent-recall",
+      "name": "Recall Codename (Actor A)",
+      "type": "@aws/n8n-nodes-agentcore.agentCoreHarness",
+      "typeVersion": 2,
+      "position": [
+        420,
+        380
+      ],
+      "credentials": {
+        "agentCoreApi": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "Amazon Bedrock AgentCore API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// PASS = actor A gets the codename back in a separate execution.\nconst raw = String($json.response ?? '').trim();\nconst secret = 'AURORA';\nconst recalled = raw.toUpperCase().includes(secret);\n\n// Distinguish a real failure from a transient service error, which returns no\n// text at all. An empty response proves nothing either way.\nconst inconclusive = raw === '';\n\nlet note;\nif (recalled) {\n  note = 'Cross-execution recall confirmed.';\n} else if (inconclusive) {\n  note = 'INCONCLUSIVE: empty response (likely a transient service error). Re-run this step.';\n} else {\n  note = 'FAIL: actor A did not recall the stored codename. Check that Session ID and Actor ID match step 1 and that Memory Mode is Managed.';\n}\n\nreturn [{\n  json: {\n    step: 'recall',\n    claim: 'memory persists across separate executions',\n    pass: recalled,\n    inconclusive,\n    sessionSource: $json.sessionSource,\n    note,\n    response: raw.slice(0, 400),\n  },\n}];"
+      },
+      "id": "verdict-recall",
+      "name": "Verdict: Recall",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        700,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "path": "memory-test-isolate",
+        "httpMethod": "POST",
+        "options": {}
+      },
+      "id": "wh-isolate",
+      "name": "3. Isolation Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -60,
+        720
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cfg-i1",
+              "name": "agentName",
+              "type": "string",
+              "value": "memory_isolation_test"
+            },
+            {
+              "id": "cfg-i2",
+              "name": "sessionId",
+              "type": "string",
+              "value": "memory-test-session-please-change-me-0001"
+            },
+            {
+              "id": "cfg-i3",
+              "name": "actorB",
+              "type": "string",
+              "value": "actor-b"
+            },
+            {
+              "id": "cfg-i4",
+              "name": "secret",
+              "type": "string",
+              "value": "AURORA"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "config-isolate",
+      "name": "Config (Isolation)",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        140,
+        720
+      ]
+    },
+    {
+      "parameters": {
+        "agentName": "={{ $json.agentName }}",
+        "systemPrompt": "You are a memory test fixture. Follow instructions literally. Never guess a codename you were not told. Do not use any tools.",
+        "prompt": "What is my project codename? Reply with only the codename, or exactly: I DO NOT KNOW.",
+        "sessionId": "={{ $json.sessionId }}",
+        "additionalOptions": {
+          "actorId": "={{ $json.actorB }}",
+          "timeoutSeconds": 300
+        },
+        "provisioningOptions": {
+          "memoryMode": "managed"
+        }
+      },
+      "id": "agent-isolate",
+      "name": "Ask As Actor B (Same Session)",
+      "type": "@aws/n8n-nodes-agentcore.agentCoreHarness",
+      "typeVersion": 2,
+      "position": [
+        420,
+        720
+      ],
+      "credentials": {
+        "agentCoreApi": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "Amazon Bedrock AgentCore API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// PASS = actor B must NOT see actor A's codename.\n// Check the whole payload, not just the prose, so a tool trace cannot hide a leak.\nconst secret = 'AURORA';\nconst raw = String($json.response ?? '').trim();\nconst everything = JSON.stringify($json).toUpperCase();\nconst leaked = everything.includes(secret);\n\n// An empty response means the service returned a transient error. That is NOT\n// evidence of isolation - it is no evidence at all. Report it as inconclusive\n// so a failed call can never be mistaken for a pass.\nconst inconclusive = raw === '';\n\nlet verdict;\nif (leaked) {\n  verdict = 'FAIL: actor B saw actor A memory. Do not ship per-user memory templates.';\n} else if (inconclusive) {\n  verdict = 'INCONCLUSIVE: empty response (likely a transient service error). Re-run this step.';\n} else {\n  verdict = 'PASS: actor B did not receive actor A memory.';\n}\n\nreturn [{\n  json: {\n    step: 'isolation',\n    claim: \"one actor's memory never reaches another\",\n    pass: !leaked && !inconclusive,\n    leaked,\n    inconclusive,\n    verdict,\n    response: raw.slice(0, 400),\n  },\n}];"
+      },
+      "id": "verdict-isolate",
+      "name": "Verdict: Isolation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        700,
+        720
+      ]
+    }
+  ],
+  "connections": {
+    "1. Store Webhook": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Store Codename (Actor A)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Codename (Actor A)": {
+      "main": [
+        [
+          {
+            "node": "Verdict: Stored",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "2. Recall Webhook": {
+      "main": [
+        [
+          {
+            "node": "Config (Recall)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config (Recall)": {
+      "main": [
+        [
+          {
+            "node": "Recall Codename (Actor A)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recall Codename (Actor A)": {
+      "main": [
+        [
+          {
+            "node": "Verdict: Recall",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "3. Isolation Webhook": {
+      "main": [
+        [
+          {
+            "node": "Config (Isolation)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config (Isolation)": {
+      "main": [
+        [
+          {
+            "node": "Ask As Actor B (Same Session)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ask As Actor B (Same Session)": {
+      "main": [
+        [
+          {
+            "node": "Verdict: Isolation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {}
+}

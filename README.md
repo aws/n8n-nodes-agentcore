@@ -1,6 +1,9 @@
 # @aws/n8n-nodes-agentcore
 
-An n8n community node for **Amazon Bedrock AgentCore harness**. Run production-grade AI agents with isolated microVMs, real browsers, real code execution, and persistent memory — directly from your n8n workflows.
+A **[verified](https://n8n.io/integrations/amazon-bedrock-agentcore/)** n8n community node for **Amazon Bedrock AgentCore harness**. Run production-grade AI agents with isolated microVMs, real browsers, real code execution, and persistent memory, directly from your n8n workflows.
+
+Listed on n8n at
+**[n8n.io/integrations/amazon-bedrock-agentcore](https://n8n.io/integrations/amazon-bedrock-agentcore/)**.
 
 > Available in the AWS Regions listed in the
 > [AgentCore Regions documentation](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/agentcore-regions.html).
@@ -41,23 +44,27 @@ a working agent reply in ~5 minutes (install → credential → one prompt → m
 
 ## Installation
 
-This node installs on **self-hosted n8n**. n8n Cloud only allows *verified*
-community nodes in its nodes panel; verification for this node is in progress
-(see [Discovery on n8n](#discovery-on-n8n)). If you run n8n Cloud today, you'll
-need a self-hosted instance to use this node.
+This node is a **verified community node**, so it works on both **n8n Cloud** and
+**self-hosted n8n** and appears directly in the in-editor nodes panel. Add a node,
+search for **Amazon Bedrock AgentCore**, and select it. On n8n Cloud, an instance
+owner does the one-time install.
 
 > New to self-hosting? You can run n8n locally with a single command
 > (`npx n8n`), or with Docker, or on a cloud provider. See the
 > [n8n self-hosting guide](https://docs.n8n.io/hosting/) for all options.
 
-### Via the n8n editor (self-hosted)
+### Via the nodes panel
 
-1. Open your self-hosted n8n instance.
-2. Go to **Settings → Community Nodes → Install**.
-3. Enter `@aws/n8n-nodes-agentcore`.
-4. Acknowledge the community-node prompt, then choose **Install**.
+1. In a workflow, add a node and search for **Amazon Bedrock AgentCore**.
+2. Select it. n8n installs the verified node for you.
 
-### Via npm (self-hosted)
+### Via settings
+
+1. Go to **Settings → Community Nodes → Install**.
+2. Enter `@aws/n8n-nodes-agentcore`.
+3. Acknowledge the community-node prompt, then choose **Install**.
+
+### Via npm (self-hosted only)
 
 ```bash
 cd ~/.n8n
@@ -320,9 +327,28 @@ The `examples/` folder has importable workflows:
 6. **`06-skills-agent.json`** — Agent loading AWS catalog + Git + S3 skills (v0.2)
 7. **`07-inline-function-roundtrip.json`** — Inline function tool_use → compute result → send it back (v0.2)
 8. **`08-vpc-filesystem.json`** — VPC harness with an EFS access-point mount (v0.2)
+9. **`09-memory-isolation-test.json`** — Three-step check that memory persists across separate executions and that one actor never sees another's memory. Requires only the `agentCoreApi` credential; run the three webhooks in order and read the `pass` field from each verdict node.
 
 Import any of them via **Workflows → Import from File** in n8n. The v0.2 examples
 contain placeholder ARNs / IDs — replace them with your own.
+
+### End-to-end templates
+
+The `examples/templates/` folder has fuller workflows that show the agent working
+alongside other n8n nodes in complete, importable automations:
+
+- **`calculate-campaign-statistics-from-a-webhook.json`** — Webhook batch of numbers → code interpreter computes statistics in a microVM → n8n independently recomputes and labels the result → Slack.
+- **`remember-each-customer-across-chat-sessions.json`** — Chat assistant with per-customer long-term memory, scoped by Actor ID. `agentCoreApi` only.
+- **`add-long-term-memory-to-an-n8n-ai-agent.json`** — n8n's own AI Agent with this node attached as a tool, giving it memory that outlives the Simple Memory buffer.
+
+If you publish one of these (or your own workflow) to the n8n template library,
+run it through the pre-submission check first. Exporting from the n8n editor bakes
+in your credential IDs and instance fingerprint, which must not appear in a public
+template:
+
+```bash
+node scripts/check-template-export.mjs path/to/exported-workflow.json
+```
 
 ## Local development
 
@@ -407,17 +433,16 @@ The package name `@aws/n8n-nodes-agentcore` matches n8n’s required
 
 ### Discovery on n8n
 
-n8n has no per-node registry in its docs. Community nodes are discovered as npm
-packages, and installed on **self-hosted** n8n via **Settings → Community Nodes**
-(or `npm install`) by package name.
+n8n has no per-node registry in its docs. Unverified community nodes are
+discovered as npm packages and installed on **self-hosted** n8n via
+**Settings → Community Nodes** (or `npm install`) by package name.
 
 Appearing in the in-editor nodes panel, and installing on **n8n Cloud**, both
 require the node to be **verified** through the
 [n8n Creator Portal](https://creators.n8n.io/nodes). n8n's verification requires
-an MIT license and no runtime dependencies; this node is MIT-licensed and ships
-with zero runtime dependencies, and has been submitted for verification. Until
-verification is granted, use the node on self-hosted n8n as described in
-[Installation](#installation).
+an MIT license and no runtime dependencies; this node is MIT-licensed, ships with
+zero runtime dependencies, and **is verified**. It is listed at
+[n8n.io/integrations/amazon-bedrock-agentcore](https://n8n.io/integrations/amazon-bedrock-agentcore/).
 
 ### Announce
 
@@ -429,7 +454,8 @@ verification is granted, use the node on self-hosted n8n as described in
 |Version           |Capability                                                                                       |
 |------------------|-------------------------------------------------------------------------------------------------|
 |**v0.1**          |Run Agent, Invoke Existing, MCP / Browser / Code Interpreter / Gateway tools, streaming, sessions|
-|**v0.2** (current)|Multi-provider models, managed memory, VPC, custom containers, filesystem mounts, skills, inline functions, OAuth Bearer invoke, versions & endpoints|
+|**v0.2**          |Multi-provider models, managed memory, VPC, custom containers, filesystem mounts, skills, inline functions, versions & endpoints|
+|**v0.4** (current)|OAuth Bearer Token moved to the credential, Add Tools / Add Skills toggles, AWS calls through n8n's HTTP helper, node `typeVersion` 2|
 |**later**         |ExecuteCommand (shell) with Bearer, custom Browser/Code Interpreter resources, CloudFormation quick-create, Export to Code, Step Functions|
 
 ## Limitations (v0.2)

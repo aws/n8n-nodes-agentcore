@@ -1,0 +1,270 @@
+{
+  "name": "Calculate campaign statistics from a webhook with Amazon Bedrock AgentCore",
+  "meta": {
+    "instanceId": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Statistics that are computed, not estimated\n\nPost a batch of numbers to a webhook and get back real statistics. The agent writes Python and runs it in an isolated microVM, so the arithmetic is executed rather than predicted by a language model. Then n8n checks the answer before anyone reads it.\n\n### How it works\n\n1. **When Campaign Data Received** accepts a `POST` with a `values` array and an optional `label`.\n2. **Set Channel Config** normalises the payload and holds the values you edit.\n3. **Campaign Analysis Agent** runs on Amazon Bedrock AgentCore with the **Code Interpreter** tool enabled, and returns strict JSON.\n4. **Parse and Verify Data** recomputes every reported figure in n8n and compares. Any mismatch, or a run where the code interpreter did not fire, sets `verified: false`.\n5. **Send Summary to Slack** posts the result with that verified label attached.\n\nThe tool output is exact, but prose a model writes around a tool is not. The verification step is how you tell the two apart.\n\n### Setup\n\n1. Add an **Amazon Bedrock AgentCore API** credential (AWS keys, region, execution role ARN) and select it on the agent node.\n2. Add a **Slack** credential and set `slackChannel`, or delete the Slack node to run with one credential.\n3. Activate, then post a batch using the note below.\n\nKeep **Add Tools** switched on. With the toggle off the tool is ignored and the agent answers from the model alone, which still looks plausible.\n\nThe first run takes 30 to 60 seconds while the agent is provisioned.\n\n### Customization\n\nEdit the prompt and key list for percentiles, correlations, or a regression; the tool is a Python environment, not a fixed formula. Swap the Webhook for a Schedule Trigger for a nightly report.",
+        "width": 480,
+        "height": 768
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -704,
+        192
+      ],
+      "id": "37a741bd-520c-4b10-92a1-81b7daa27300",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "## Receive and configure\n\nThe webhook starts the workflow and the nearby Config node prepares the request by setting the agent name, Slack channel, label, and values.",
+        "width": 448,
+        "height": 336,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -144,
+        224
+      ],
+      "id": "2a038202-ad29-4ba4-9ce8-73c80c273332",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "content": "## Run statistics agent\n\nSends the prepared data to Amazon Bedrock AgentCore, which writes and executes Python in an isolated microVM. Add Tools must stay on.",
+        "width": 240,
+        "height": 368,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        336,
+        192
+      ],
+      "id": "9074d66f-4002-4a7d-8048-e1b2be76f4c4",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "content": "## Verify and notify\n\nParses the agent response defensively, recomputes every figure to verify it, and posts the summary to Slack with a verified label.",
+        "width": 496,
+        "height": 320,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        656,
+        240
+      ],
+      "id": "87329cf9-6fed-43dc-afbf-c90426a85ce4",
+      "name": "Sticky Note3"
+    },
+    {
+      "parameters": {
+        "content": "## Try it\n\n```\ncurl -X POST <production-url> \\\n  -H 'Content-Type: application/json' \\\n  -d '{\"label\":\"Q3 email\",\n       \"values\":[12,45,7,88,23,\n                 56,91,34,19,67]}'\n```\n\nFor that input the mean is 44.2 and the population standard deviation is 28.944084. Check the agent output against those to confirm the tool really ran.",
+        "width": 448,
+        "height": 304,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -144,
+        620
+      ],
+      "id": "b41c9d7e-3f52-4a18-9c6d-5e2a8f7b1d40",
+      "name": "Sticky Note4"
+    },
+    {
+      "id": "webhook",
+      "name": "When Campaign Data Received",
+      "type": "n8n-nodes-base.webhook",
+      "position": [
+        -100,
+        400
+      ],
+      "webhookId": "22222222-2222-4222-8222-222222222222",
+      "parameters": {
+        "path": "campaign-statistics",
+        "options": {},
+        "httpMethod": "POST"
+      },
+      "typeVersion": 2
+    },
+    {
+      "id": "config",
+      "name": "Set Channel Config",
+      "type": "n8n-nodes-base.set",
+      "position": [
+        160,
+        400
+      ],
+      "parameters": {
+        "options": {},
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cfg-1",
+              "name": "agentName",
+              "type": "string",
+              "value": "campaign_statistics"
+            },
+            {
+              "id": "cfg-2",
+              "name": "slackChannel",
+              "type": "string",
+              "value": "#analytics"
+            },
+            {
+              "id": "cfg-3",
+              "name": "label",
+              "type": "string",
+              "value": "={{ $json.body?.label || 'unlabelled batch' }}"
+            },
+            {
+              "id": "cfg-4",
+              "name": "values",
+              "type": "array",
+              "value": "={{ $json.body?.values || [] }}"
+            }
+          ]
+        }
+      },
+      "typeVersion": 3.4
+    },
+    {
+      "id": "statistics-agent",
+      "name": "Campaign Analysis Agent",
+      "type": "@aws/n8n-nodes-agentcore.agentCoreHarness",
+      "position": [
+        380,
+        400
+      ],
+      "parameters": {
+        "tools": {
+          "tool": [
+            {
+              "name": "code_interpreter",
+              "type": "agentcore_code_interpreter"
+            }
+          ]
+        },
+        "prompt": "=Compute descriptive statistics for the batch labelled \"{{ $json.label }}\".\n\nValues: {{ JSON.stringify($json.values) }}",
+        "addTools": true,
+        "agentName": "={{ $json.agentName }}",
+        "sessionId": "={{ 'stats-' + $execution.id }}",
+        "systemPrompt": "You are a data analyst. You must compute every number by writing and running Python in the code interpreter. Never estimate, never do mental arithmetic, and never report a figure you did not compute in code. Use the population standard deviation (statistics.pstdev). Reply with a single JSON object and nothing else, using exactly these keys: label, count, mean, median, stdev, min, max. All numeric values must be plain numbers.",
+        "additionalOptions": {
+          "maxTokens": 4096,
+          "timeoutSeconds": 300
+        },
+        "provisioningOptions": {
+          "memoryMode": "disabled"
+        }
+      },
+      "credentials": {
+        "agentCoreApi": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "Amazon Bedrock AgentCore API"
+        }
+      },
+      "typeVersion": 2
+    },
+    {
+      "id": "verify",
+      "name": "Parse and Verify Data",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        700,
+        400
+      ],
+      "parameters": {
+        "jsCode": "// 1. Parse the agent's JSON defensively - it may arrive fenced or with prose.\nconst raw = String($json.response ?? '').trim();\n\nfunction extractJson(text) {\n  const fenced = text.match(/```(?:json)?\\s*([\\s\\S]*?)```/);\n  const candidate = fenced ? fenced[1].trim() : text;\n  try {\n    return JSON.parse(candidate);\n  } catch {}\n  const start = candidate.indexOf('{');\n  const end = candidate.lastIndexOf('}');\n  if (start !== -1 && end > start) {\n    try {\n      return JSON.parse(candidate.slice(start, end + 1));\n    } catch {}\n  }\n  return null;\n}\n\nconst stats = extractJson(raw);\nconst values = ($('Set Channel Config').item.json.values || []).map(Number).filter((n) => Number.isFinite(n));\n\nif (!stats || values.length === 0) {\n  return [{\n    json: {\n      ok: false,\n      verified: false,\n      reason: !stats\n        ? 'Could not parse a JSON object from the agent response.'\n        : 'No numeric values were supplied in the webhook body.',\n      rawResponse: raw.slice(0, 600),\n    },\n  }];\n}\n\n// 2. Recompute every figure the workflow reports, and compare. The code\n//    interpreter is exact, but any prose the model writes around the tool output\n//    is not, so nothing is labelled verified unless it was checked here.\nconst sorted = [...values].sort((a, b) => a - b);\nconst mid = Math.floor(sorted.length / 2);\n\nconst local = {\n  count: values.length,\n  mean: values.reduce((a, b) => a + b, 0) / values.length,\n  median: sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2,\n  min: sorted[0],\n  max: sorted[sorted.length - 1],\n};\n// Population standard deviation, matching statistics.pstdev in the prompt.\nlocal.stdev = Math.sqrt(\n  values.reduce((acc, v) => acc + (v - local.mean) ** 2, 0) / values.length,\n);\n\nfunction matches(reported, computed) {\n  const r = Number(reported);\n  if (!Number.isFinite(r)) return false;\n  const tolerance = Math.max(1e-6, Math.abs(computed) * 1e-6);\n  return Math.abs(r - computed) <= tolerance;\n}\n\nconst fields = ['count', 'mean', 'median', 'stdev', 'min', 'max'];\nconst fieldChecks = {};\nconst mismatched = [];\nfor (const f of fields) {\n  const ok = matches(stats[f], local[f]);\n  fieldChecks[f] = ok;\n  if (!ok) mismatched.push(f);\n}\n\n// The code interpreter must have run. A figure produced without it was predicted\n// by the model, not computed, so it does not qualify as verified.\nconst codeInterpreterUsed = Array.isArray($json.toolUses)\n  && $json.toolUses.some((t) => String(t?.name ?? '').includes('code_interpreter'));\n\nconst verified = mismatched.length === 0 && codeInterpreterUsed;\n\nlet note;\nif (verified) {\n  note = 'Every reported figure matches an independent recomputation in n8n.';\n} else if (!codeInterpreterUsed) {\n  note = 'The code interpreter did not run, so these figures came from the model rather than from executed code. Check that Add Tools is enabled.';\n} else {\n  note = `Mismatch against the local recomputation for: ${mismatched.join(', ')}. Do not trust these figures.`;\n}\n\nreturn [{\n  json: {\n    ok: true,\n    verified,\n    codeInterpreterUsed,\n    label: stats.label ?? $('Set Channel Config').item.json.label,\n    count: stats.count ?? local.count,\n    mean: Number(stats.mean),\n    median: stats.median ?? null,\n    stdev: stats.stdev ?? null,\n    min: stats.min ?? null,\n    max: stats.max ?? null,\n    check: {\n      fields: fieldChecks,\n      mismatched,\n      recomputed: local,\n      note,\n    },\n    latencyMs: $json.latencyMs ?? null,\n  },\n}];"
+      },
+      "typeVersion": 2
+    },
+    {
+      "id": "post-summary",
+      "name": "Send Summary to Slack",
+      "type": "n8n-nodes-base.slack",
+      "position": [
+        1000,
+        400
+      ],
+      "parameters": {
+        "text": "=*Campaign statistics: {{ $json.label }}*\n{{ $json.verified ? ':white_check_mark: verified' : ':warning: NOT verified - see check.note' }}\n\n• count: {{ $json.count }}\n• mean: {{ $json.mean }}\n• median: {{ $json.median }}\n• std dev: {{ $json.stdev }}\n• min / max: {{ $json.min }} / {{ $json.max }}\n\nComputed in a microVM via the code interpreter.",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "={{ $('Set Channel Config').item.json.slackChannel }}"
+        },
+        "otherOptions": {
+          "includeLinkToWorkflow": false
+        }
+      },
+      "credentials": {
+        "slackApi": {
+          "id": "REPLACE_WITH_YOUR_SLACK_CREDENTIAL_ID",
+          "name": "Slack account"
+        }
+      },
+      "typeVersion": 2.2
+    }
+  ],
+  "connections": {
+    "When Campaign Data Received": {
+      "main": [
+        [
+          {
+            "node": "Set Channel Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Channel Config": {
+      "main": [
+        [
+          {
+            "node": "Campaign Analysis Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Campaign Analysis Agent": {
+      "main": [
+        [
+          {
+            "node": "Parse and Verify Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse and Verify Data": {
+      "main": [
+        [
+          {
+            "node": "Send Summary to Slack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {}
+}

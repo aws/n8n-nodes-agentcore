@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **End-to-end templates** in `examples/templates/`: a chat assistant with
+  per-customer long-term memory, a webhook-driven statistics workflow that
+  computes in the code interpreter and independently verifies the result in n8n,
+  and n8n's own AI Agent with this node attached as a tool for memory that
+  outlives the Simple Memory buffer.
+- **`examples/09-memory-isolation-test.json`** — a three-step verification
+  workflow for the memory guarantees: that memory persists across separate
+  executions, and that one actor never sees another actor's memory. Uses only the
+  `agentCoreApi` credential.
+- **`scripts/check-template-export.mjs`** — pre-submission check for a workflow
+  exported from the n8n editor. Reports real credential IDs and names, instance
+  fingerprints, pinned run data, AWS account IDs, ARNs, access keys and secret
+  keys, emails, JWTs, private keys, long hex secrets, and Slack, OpenAI,
+  Anthropic, GitHub, GitLab and Google tokens, so none of it reaches a public
+  template submission.
+
+### Changed
+
+- **Install and discovery docs** now state that the node is verified and works on
+  n8n Cloud as well as self-hosted, and link to the listing at
+  [n8n.io/integrations/amazon-bedrock-agentcore](https://n8n.io/integrations/amazon-bedrock-agentcore/).
+  The README and QUICKSTART previously said verification was in progress and that
+  a self-hosted instance was required.
+- **QUICKSTART** no longer hardcodes the supported Region list, which can drift;
+  it links to the AgentCore Regions documentation instead.
+- **AGENTS.md** repo layout, node version, and roadmap brought up to date. The
+  layout omitted `examples/templates/`, `scripts/`, `docs/QUICKSTART.md`, and
+  `examples/09`; the node version was documented as `1` when it is `2`; and the
+  roadmap listed shipped v0.2 and v0.4 features as future work. Adds the n8n
+  Creator hub conventions that workflows under `examples/templates/` must follow.
+- **README roadmap** marked v0.2 as current at version 0.4.1; it now reflects
+  v0.4.
+- **npm package description** now says the node is verified, and `verified` was
+  added to `keywords`. npm always publishes `README.md` regardless of the `files`
+  field, so this release is what surfaces the verified status on the npm page.
+
 ## [0.4.0] - 2026-07-27
 
 ### Changed
