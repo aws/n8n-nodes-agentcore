@@ -45,9 +45,10 @@ authoritative for the conventions below.
 │           ├── stream.ts                     # InvokeHarness streaming consumer (+ tool-use input)
 │           └── tools.ts                      # buildToolsArray() + configHash() for drift detection
 ├── docs/
+│   ├── QUICKSTART.md                 # Install to first agent reply in ~5 minutes
 │   ├── SPEC.md                       # The canonical spec - source of truth for v0.x scope
 │   └── iam-trust-policy.json         # Execution-role trust policy template (the only IAM policy shipped; permission policies live in the AWS harness security guide, linked from README)
-├── examples/                         # Importable example workflows (01-08)
+├── examples/                         # Importable workflows: 01-08 are single-feature, 09 verifies the memory guarantees
 │   ├── 01-mcp-research-agent.json
 │   ├── 02-code-interpreter.json
 │   ├── 03-multiturn-support.json
@@ -55,7 +56,14 @@ authoritative for the conventions below.
 │   ├── 05-oauth-invoke.json
 │   ├── 06-skills-agent.json
 │   ├── 07-inline-function-roundtrip.json
-│   └── 08-vpc-filesystem.json
+│   ├── 08-vpc-filesystem.json
+│   ├── 09-memory-isolation-test.json
+│   └── templates/                    # End-to-end workflows that pair the node with other n8n nodes; these are what get published to n8n's template library, so they follow n8n's sticky-note and naming guidelines
+│       ├── calculate-campaign-statistics-from-a-webhook.json
+│       ├── remember-each-customer-across-chat-sessions.json
+│       └── add-long-term-memory-to-an-n8n-ai-agent.json
+├── scripts/
+│   └── check-template-export.mjs     # Pre-submission scan for a workflow exported from the n8n editor (credential IDs, instance fingerprint, pinned run data, secrets)
 ├── package.json
 └── tsconfig.json
 ```
@@ -142,10 +150,11 @@ These come directly from `docs/SPEC.md` §9 and are checked in
 
 ## n8n conventions specific to this repo
 
-- The node version (`description.version`) is `1`. Bump it only on a
+- The node version (`description.version`) is `2`. Bump it only on a
   **breaking change to the node's UI fields**, never on logic-only changes.
   Version bumps strand existing workflows on the old version - only the
-  next version's typeVersion-aware fields apply to new placements.
+  next version's typeVersion-aware fields apply to new placements. Any
+  workflow JSON in `examples/` must carry `"typeVersion": 2` to match.
 - The package.json `n8n` field points to compiled JS paths under `dist/`.
   Adding a new node or credential requires updating that field.
 - The icon (`agentcore.svg`) must be referenced as `file:agentcore.svg`
@@ -156,6 +165,31 @@ These come directly from `docs/SPEC.md` §9 and are checked in
 - Use `INodeProperties` types from `n8n-workflow` for all field
   definitions. Avoid `as any` casts in field definitions - they break
   n8n's UI validation.
+
+### Workflows in `examples/templates/`
+
+These get published to n8n's public template library, so they follow n8n's
+Creator hub guidelines rather than our own preferences:
+
+- **Exactly one overview sticky.** Omit the `color` field so it renders the
+  default yellow; 100 to 300 words; must contain `### How it works` and
+  `### Setup`.
+- **Section stickies** use `color: 7` (white/grey), stay under 50 words, and are
+  sized to cover a *group* of nodes. A node sitting outside every section sticky
+  is a review comment waiting to happen.
+- **Rename every node** to say what it does. Trigger and action nodes get
+  descriptive names (`When Campaign Data Received`, not `Webhook`); the standard
+  AI sub-nodes keep their default names (`AI Agent`, `OpenAI Chat Model`,
+  `Simple Memory`), matching what n8n's own published partner templates do.
+- **No real identifiers.** Credential IDs stay as `REPLACE_WITH_...` placeholders,
+  `meta.instanceId` stays zeroed, and `pinData` stays empty. Run
+  `node scripts/check-template-export.mjs <file>` before submitting anything
+  exported from the editor; the editor bakes in your real credential IDs.
+- **Turn on `addTools` whenever tools are configured** (same for `addSkills`).
+  With the toggle off the section is ignored at runtime and the agent answers
+  from the model alone, which still looks plausible.
+- **Anything the workflow labels as verified must actually be checked.** If a
+  Code node computes a `verified` flag, recompute every figure it vouches for.
 
 ## Versioning
 
@@ -169,10 +203,9 @@ The roadmap from `docs/SPEC.md`:
 | Version | Adds                                                        |
 |---------|-------------------------------------------------------------|
 | v0.1    | Run Agent, Invoke Existing, MCP/Browser/CodeInterp/Gateway tools |
-| v0.2    | Inline functions (n8n sub-nodes as harness tools)           |
-| v0.3    | Memory auto-provisioning (BYO Memory ARN today)             |
-| v0.4    | Custom container support                                    |
-| v0.5    | CloudFormation quick-create for the execution role          |
+| v0.2    | Multi-provider models, managed memory, VPC, custom containers, filesystem mounts, skills, inline functions, versions & endpoints |
+| v0.4    | OAuth Bearer Token on the credential, Add Tools / Add Skills toggles, AWS calls through n8n's HTTP helper, node `typeVersion` 2 (current) |
+| later   | ExecuteCommand (shell) with Bearer, custom Browser / Code Interpreter resource ARNs, CloudFormation quick-create for the execution role, Export to Code, Step Functions |
 
 Anything outside that list is "open question" - discuss before
 implementing.

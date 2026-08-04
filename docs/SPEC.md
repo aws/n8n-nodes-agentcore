@@ -2,7 +2,7 @@
 
 |                         |                                            |
 |-------------------------|--------------------------------------------|
-|**Status**               |v0.3.4 — released on npm                    |
+|**Status**               |v0.4.1 — released on npm; verified by n8n   |
 |**Owner**                |Amazon Bedrock AgentCore team               |
 |**Distribution**         |npm community node + AWS public GitHub org  |
 |**License**              |MIT                                         |

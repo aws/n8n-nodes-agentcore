@@ -1,0 +1,258 @@
+{
+  "name": "Add long-term memory to an n8n AI Agent with Amazon Bedrock AgentCore",
+  "meta": {
+    "instanceId": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Keep your AI Agent, add memory that lasts\n\nn8n's AI Agent with Simple Memory forgets everything once the buffer rolls over. This template keeps the AI Agent exactly where it is and attaches Amazon Bedrock AgentCore as a **tool**, so the agent can store and retrieve facts about a person that survive across executions.\n\n### How it works\n1. **When chat message received** starts a run per message.\n2. **Set User Identity** resolves who is talking.\n3. **AI Agent** handles the conversation, with:\n   - **OpenAI Chat Model** for the reply,\n   - **Simple Memory** for the last few turns of this chat,\n   - **Long-Term Memory** (Amazon Bedrock AgentCore, used as a tool) for anything that must outlive the buffer.\n4. The system message tells the agent to call the tool when it learns a durable fact and when it needs history it cannot see.\n\nShort-term recall stays fast and local. Long-term recall is scoped per person by **Actor ID**, so one user's history never reaches another.\n\n### Setup\n1. Add an **Amazon Bedrock AgentCore API** credential and select it on **Long-Term Memory**.\n2. Add an **OpenAI** credential on the chat model, or swap in any other chat model.\n3. In **Set User Identity**, map `userId` to your real user identifier. It defaults to the chat session so the template runs as imported.\n\nThe first tool call takes ~30 seconds while the harness is created, then a few seconds.\n\n### Customization\nReplace the Chat Trigger with Slack and map `userId` to the Slack user ID. Tighten the system message if you want the agent to write to long-term memory less often.",
+        "height": 800,
+        "width": 480
+      },
+      "id": "sticky-overview",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -660,
+        -200
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Who is talking\nActor ID must be stable per person, or long-term memory has nothing to key on.",
+        "height": 300,
+        "width": 420,
+        "color": 7
+      },
+      "id": "sticky-identity",
+      "name": "Sticky Note1",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -140,
+        20
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## The agent you already know\nUnchanged n8n AI Agent. Simple Memory still covers the current conversation.",
+        "height": 300,
+        "width": 300,
+        "color": 7
+      },
+      "id": "sticky-agent",
+      "name": "Sticky Note2",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        300,
+        20
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Memory that outlives the buffer\nAgentCore attached as a tool. The agent decides when to write and when to read.",
+        "height": 280,
+        "width": 620,
+        "color": 7
+      },
+      "id": "sticky-tools",
+      "name": "Sticky Note3",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        180,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "chat-trigger",
+      "name": "When chat message received",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -100,
+        140
+      ],
+      "webhookId": "33333333-3333-4333-8333-333333333333"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cfg-1",
+              "name": "userId",
+              "type": "string",
+              "value": "={{ $json.sessionId }}"
+            },
+            {
+              "id": "cfg-2",
+              "name": "chatInput",
+              "type": "string",
+              "value": "={{ $json.chatInput }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "config",
+      "name": "Set User Identity",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        140,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.chatInput }}",
+        "options": {
+          "systemMessage": "You are a helpful personal assistant.\n\nYou have two kinds of memory:\n- Your own short-term memory covers the current conversation.\n- The \"Long_Term_Memory\" tool stores facts about this specific person that must survive after this conversation ends.\n\nRules:\n1. When the person tells you something durable (a preference, a deadline, an account detail, a decision), call Long_Term_Memory to record it. State the fact plainly in the message you send.\n2. When you are asked something you cannot see in the current conversation, call Long_Term_Memory to ask for it before saying you do not know.\n3. Never invent remembered details. If the tool does not return the fact, say you do not have it.\n4. Keep replies short."
+        }
+      },
+      "id": "ai-agent",
+      "name": "AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        400,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "chat-model",
+      "name": "OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [
+        260,
+        460
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "REPLACE_WITH_YOUR_OPENAI_CREDENTIAL_ID",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('Set User Identity').item.json.userId }}"
+      },
+      "id": "simple-memory",
+      "name": "Simple Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        440,
+        460
+      ]
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Long-term memory for this specific person. Send a plain-language message to either record a durable fact or ask for one you were told earlier. Returns what is remembered.",
+        "agentName": "longterm_memory_assistant",
+        "systemPrompt": "You are a memory store for one specific person. When given a fact, acknowledge that you have recorded it. When asked a question, answer only from what you remember about this person. If you do not have the fact, reply exactly: NOT IN MEMORY. Never guess. Do not use any tools.",
+        "prompt": "={{ $fromAI('message', 'The fact to record, or the question to answer from long-term memory', 'string') }}",
+        "sessionId": "={{ 'ltm-' + $('Set User Identity').item.json.userId }}",
+        "additionalOptions": {
+          "actorId": "={{ $('Set User Identity').item.json.userId }}",
+          "timeoutSeconds": 300
+        },
+        "provisioningOptions": {
+          "memoryMode": "managed",
+          "memoryStrategies": [
+            "SEMANTIC",
+            "SUMMARIZATION",
+            "USER_PREFERENCE"
+          ]
+        }
+      },
+      "id": "long-term-memory",
+      "name": "Long_Term_Memory",
+      "type": "@aws/n8n-nodes-agentcore.agentCoreHarnessTool",
+      "typeVersion": 2,
+      "position": [
+        640,
+        460
+      ],
+      "credentials": {
+        "agentCoreApi": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "Amazon Bedrock AgentCore API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "Set User Identity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set User Identity": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Long_Term_Memory": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {}
+}

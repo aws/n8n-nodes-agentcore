@@ -2,17 +2,18 @@
 
 This walks you from a fresh install to a working AI agent reply. You don't write
 any agent or AWS infrastructure code: the node provisions the harness for you on
-the first run. You do need a self-hosted n8n instance to install the node (see
-the prerequisites). For the full feature reference see the [README](../README.md).
+the first run. For the full feature reference see the [README](../README.md).
 
 ## Prerequisites (one-time)
 
-1. **A self-hosted n8n instance.** This node installs on self-hosted n8n. n8n
-   Cloud only allows verified community nodes, and verification for this node is
-   in progress. You can run n8n locally with `npx n8n`, with Docker, or on a
-   cloud provider. See the [n8n self-hosting guide](https://docs.n8n.io/hosting/).
+1. **An n8n instance.** This is a
+   [verified community node](https://n8n.io/integrations/amazon-bedrock-agentcore/),
+   so it works on n8n Cloud as well as self-hosted n8n. To self-host, you can run
+   n8n locally with `npx n8n`, with Docker, or on a cloud provider. See the
+   [n8n self-hosting guide](https://docs.n8n.io/hosting/).
 2. **An AWS account** with Amazon Bedrock + AgentCore access in a supported
-   region: `us-east-1`, `us-west-2`, `ap-southeast-2`, or `eu-central-1`.
+   region (see the
+   [AgentCore Regions documentation](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/agentcore-regions.html)).
 3. **A Bedrock model enabled** — in the Bedrock console → **Model access**,
    enable an Anthropic Claude model (e.g. Claude Sonnet 4.6). *Skipping this is
    the #1 cause of "AccessDenied" on the first run.*
@@ -21,11 +22,12 @@ the prerequisites). For the full feature reference see the [README](../README.md
    See [IAM setup](../README.md#iam-setup). Trust policy:
    [`docs/iam-trust-policy.json`](./iam-trust-policy.json).
 
-## Step 1 — Install the node (self-hosted n8n)
+## Step 1 — Install the node
 
-In your self-hosted n8n instance: **Settings → Community Nodes → Install**, enter
-`@aws/n8n-nodes-agentcore`, acknowledge the community-node prompt, and install.
-Restart n8n if prompted.
+In the n8n editor, add a node, search for **Amazon Bedrock AgentCore**, and select
+it; n8n installs it for you. You can also go to **Settings → Community Nodes →
+Install** and enter `@aws/n8n-nodes-agentcore`. On n8n Cloud an instance owner
+does this once. On self-hosted n8n, restart if prompted.
 
 ## Step 2 — Add the credential
 
