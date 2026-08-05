@@ -27,6 +27,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **VPC guidance corrected: VPC endpoints, not a NAT gateway.** AgentCore changed
+  how a VPC-mode harness pulls its managed container. It now comes from a
+  **private ECR repository in the harness Region** rather than ECR Public, so the
+  subnets need **no internet access**. Create VPC endpoints instead: interface
+  endpoints for `ecr.dkr` and `ecr.api`, a gateway endpoint for `s3`, and an
+  interface endpoint for `bedrock-runtime` if the agent calls Bedrock. The
+  execution role also needs private-ECR pull permissions on
+  `repository/harness-*`. The previous guidance (route `0.0.0.0/0` to a NAT
+  gateway because ECR Public has no VPC endpoint) is no longer correct and would
+  produce a VPC that both costs more and still fails to start sessions. Updated
+  the **VPC Subnet IDs** credential field description, the README VPC
+  requirements and troubleshooting rows, the feature-to-IAM table, and
+  `docs/SPEC.md`.
 - **Install and discovery docs** now state that the node is verified and works on
   n8n Cloud as well as self-hosted, and link to the listing at
   [n8n.io/integrations/amazon-bedrock-agentcore](https://n8n.io/integrations/amazon-bedrock-agentcore/).
