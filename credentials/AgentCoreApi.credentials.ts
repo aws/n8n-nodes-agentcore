@@ -101,7 +101,7 @@ export class AgentCoreApi implements ICredentialType {
 			placeholder: 'subnet-0abc123,subnet-0def456',
 			displayOptions: { show: { networkMode: ['VPC'] } },
 			description:
-				'Comma-separated subnet IDs for VPC mode. The VPC must have a NAT gateway with an internet route (AgentCore pulls its container from public.ecr.aws, which does not support VPC endpoints).',
+				'Comma-separated subnet IDs for VPC mode. The subnets do not need internet access: AgentCore pulls its managed container from a private Amazon ECR repository in the same Region. Create VPC endpoints for Amazon ECR and Amazon S3 (and Amazon Bedrock, if the agent calls it) so those calls resolve inside your VPC. See https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/harness-security.html#harness-network-config.',
 		},
 		{
 			displayName: 'VPC Security Group IDs',

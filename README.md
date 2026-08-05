@@ -120,7 +120,7 @@ AWS guide's
 | **Custom container (private ECR)** | Execution role: the *Private ECR access* block — `ecr:GetDownloadUrlForLayer`/`ecr:BatchGetImage` scoped to your `repository/<name>`, and `ecr:GetAuthorizationToken` on `*` (that action can't be resource-scoped). |
 | **EFS filesystem mount** (VPC) | Execution role: `elasticfilesystem:ClientMount`/`ClientWrite` scoped to your access-point ARN. (Session-storage mounts need no extra IAM; no `ClientRootAccess`.) |
 | **Versions / named endpoints** | Caller: `ListHarnessVersions` and the `*HarnessEndpoint` actions, plus the paired `*AgentRuntimeEndpoint` actions (per the callers table). |
-| **VPC networking** | No extra IAM — it's a `networkConfiguration` on the harness. Your VPC needs a NAT route to `public.ecr.aws` (see the guide's Network configuration section). |
+| **VPC networking** | Execution role: the *VPC mode: managed image pull from private ECR* block — in VPC mode the harness pulls its **managed** container from a private ECR repo in-Region (`repository/harness-*`), so add `ecr:BatchGetImage`/`GetDownloadUrlForLayer`/`BatchCheckLayerAvailability` plus `ecr:GetAuthorizationToken`. Your subnets need **no internet access**; create VPC endpoints instead, per [Network configuration](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/harness-security.html#harness-network-config). |
 
 `iam:PassRole` is **not** required: the execution-role ARN is passed to
 CreateHarness as a parameter and assumed by the service, not passed by the caller.
@@ -246,13 +246,20 @@ to run harnesses in your VPC. Provisioning Options add a **Container Image URI**
 (linux/arm64 ECR) and **Filesystem Mounts** (session storage with no VPC; EFS and
 S3 Files access points require VPC).
 
-> **VPC requirements:** the subnets you provide must route `0.0.0.0/0` to a **NAT
-> gateway** — the harness pulls its container from `public.ecr.aws` at session
-> start, and ECR Public has no VPC endpoint, so a NAT-less/isolated subnet causes
-> image-pull timeouts. **First creation of a VPC harness is slow** (network
-> interface provisioning + container pull through the NAT can take several
-> minutes); the node waits up to 10 minutes. Subsequent runs reuse the harness
-> and return in seconds.
+> **VPC requirements:** your subnets need **no internet access**. In VPC mode the
+> harness pulls its managed container from a **private ECR repository in the same
+> Region**, so create **VPC endpoints** instead of a NAT gateway: interface
+> endpoints for `com.amazonaws.<region>.ecr.dkr` and
+> `com.amazonaws.<region>.ecr.api`, a gateway endpoint for
+> `com.amazonaws.<region>.s3`, and an interface endpoint for
+> `com.amazonaws.<region>.bedrock-runtime` if the agent calls Bedrock for
+> inference. Without them, sessions fail to start on image-pull timeouts. The
+> execution role also needs private-ECR pull permissions (see
+> [IAM setup](#iam-setup)). AWS keeps the canonical list in
+> [Network configuration](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/harness-security.html#harness-network-config).
+> **First creation of a VPC harness is slow** (network
+> interface provisioning in your subnets can take several minutes); the node waits
+> up to 10 minutes. Subsequent runs reuse the harness and return in seconds.
 
 ### OAuth Bearer invoke
 
@@ -480,7 +487,7 @@ zero runtime dependencies, and **is verified**. It is listed at
 | **The agent doesn't remember previous turns** | The **Session ID** was left blank, so each run is a new conversation (output shows `sessionSource: "generated"`). Set a stable Session ID and reuse it across runs. See [Memory & sessions](#memory--sessions). |
 | **`AccessDenied` / `not authorized to perform` on the first run** | Either the **Bedrock model isn't enabled** (Bedrock console → Model access), or the **execution role is missing a scoped action** for the feature you used (e.g. `bedrock-mantle:CreateInference` for Mantle models, token-vault read for OpenAI/Gemini keys, `InvokeGateway` for gateways). See [IAM setup](#iam-setup). |
 | **First run hangs for ~30 seconds** | Expected — the node is creating the harness on first use. Subsequent runs reuse it and return in a few seconds. |
-| **"Harness … did not reach READY within …" on a VPC harness** | VPC harness creation is slow (ENI provisioning + container pull through the NAT). The node now waits up to 10 minutes; if you still see this, the harness is often **still creating** — re-run the node shortly and it will find the now-READY harness and invoke it. A *persistent* failure (or `CREATE_FAILED`) points at egress: the subnet must route `0.0.0.0/0` to a **NAT gateway** (ECR Public has no VPC endpoint). Fix the route table or use a NAT-routed subnet. |
+| **"Harness … did not reach READY within …" on a VPC harness** | VPC harness creation is slow (ENI provisioning in your subnets). The node now waits up to 10 minutes; if you still see this, the harness is often **still creating** — re-run the node shortly and it will find the now-READY harness and invoke it. A *persistent* failure (or `CREATE_FAILED`) usually means the managed container image could not be pulled: check that the **VPC endpoints** exist (`ecr.dkr` + `ecr.api` interface, `s3` gateway) and that the **execution role has private-ECR pull permissions** on `repository/harness-*`. See [IAM setup](#iam-setup). |
 | **OpenAI / Gemini model errors about a missing key** | Direct OpenAI/Gemini require an **API Key ARN** (a token-vault credential provider) in Model Options. To use OpenAI-style models without a key, pick the **Bedrock** provider with API Format `Responses`/`Chat Completions` and a Mantle model id. |
 | **Two "Amazon Bedrock AgentCore" nodes in the palette** | A leftover/older install. Remove the stale package from `~/.n8n/nodes` (or `~/.n8n/custom`), then fully restart n8n and open a fresh browser tab. |
 | **OAuth invoke returns 401 / Unauthorized** | The harness needs an **inbound JWT authorizer** configured, and the Bearer Token must be a valid, unexpired JWT from that IdP whose `aud`/`client_id`/scopes satisfy the authorizer. See [OAuth Bearer invoke](#oauth-bearer-invoke). |
