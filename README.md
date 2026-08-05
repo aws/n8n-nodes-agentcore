@@ -120,7 +120,7 @@ AWS guide's
 | **Custom container (private ECR)** | Execution role: the *Private ECR access* block — `ecr:GetDownloadUrlForLayer`/`ecr:BatchGetImage` scoped to your `repository/<name>`, and `ecr:GetAuthorizationToken` on `*` (that action can't be resource-scoped). |
 | **EFS filesystem mount** (VPC) | Execution role: `elasticfilesystem:ClientMount`/`ClientWrite` scoped to your access-point ARN. (Session-storage mounts need no extra IAM; no `ClientRootAccess`.) |
 | **Versions / named endpoints** | Caller: `ListHarnessVersions` and the `*HarnessEndpoint` actions, plus the paired `*AgentRuntimeEndpoint` actions (per the callers table). |
-| **VPC networking** | Execution role: the *VPC mode: managed image pull from private ECR* block — in VPC mode the harness pulls its **managed** container from a private ECR repo in-Region (`repository/harness-*`), so add `ecr:BatchGetImage`/`GetDownloadUrlForLayer`/`BatchCheckLayerAvailability` plus `ecr:GetAuthorizationToken`. Your subnets need **no internet access**; create VPC endpoints instead (see the guide's Network configuration section). |
+| **VPC networking** | Execution role: the *VPC mode: managed image pull from private ECR* block — in VPC mode the harness pulls its **managed** container from a private ECR repo in-Region (`repository/harness-*`), so add `ecr:BatchGetImage`/`GetDownloadUrlForLayer`/`BatchCheckLayerAvailability` plus `ecr:GetAuthorizationToken`. Your subnets need **no internet access**; create VPC endpoints instead, per [Network configuration](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/harness-security.html#harness-network-config). |
 
 `iam:PassRole` is **not** required: the execution-role ARN is passed to
 CreateHarness as a parameter and assumed by the service, not passed by the caller.
@@ -255,7 +255,9 @@ S3 Files access points require VPC).
 > `com.amazonaws.<region>.bedrock-runtime` if the agent calls Bedrock for
 > inference. Without them, sessions fail to start on image-pull timeouts. The
 > execution role also needs private-ECR pull permissions (see
-> [IAM setup](#iam-setup)). **First creation of a VPC harness is slow** (network
+> [IAM setup](#iam-setup)). AWS keeps the canonical list in
+> [Network configuration](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/harness-security.html#harness-network-config).
+> **First creation of a VPC harness is slow** (network
 > interface provisioning in your subnets can take several minutes); the node waits
 > up to 10 minutes. Subsequent runs reuse the harness and return in seconds.
 
