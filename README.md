@@ -122,8 +122,17 @@ AWS guide's
 | **Versions / named endpoints** | Caller: `ListHarnessVersions` and the `*HarnessEndpoint` actions, plus the paired `*AgentRuntimeEndpoint` actions (per the callers table). |
 | **VPC networking** | Execution role: the *VPC mode: managed image pull from private ECR* block — in VPC mode the harness pulls its **managed** container from a private ECR repo in-Region (`repository/harness-*`), so add `ecr:BatchGetImage`/`GetDownloadUrlForLayer`/`BatchCheckLayerAvailability` plus `ecr:GetAuthorizationToken`. Your subnets need **no internet access**; create VPC endpoints instead, per [Network configuration](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/harness-security.html#harness-network-config). |
 
-`iam:PassRole` is **not** required: the execution-role ARN is passed to
-CreateHarness as a parameter and assumed by the service, not passed by the caller.
+**On `iam:PassRole`.** The harness API itself does not require it: the
+execution-role ARN is a CreateHarness parameter, assumed by the service rather than
+passed by the caller. In practice, `CreateHarness` fans out into several underlying
+resources (an AgentCore Runtime, a runtime endpoint, a memory store, and a workload
+identity), and IAM authorizes each against its own resource type, so callers have
+reported needing `iam:PassRole` on the execution role plus `CreateAgentRuntime`,
+`CreateAgentRuntimeEndpoint`, `iam:CreateServiceLinkedRole`, and
+`CreateWorkloadIdentity`. Build the caller policy from the
+[callers table](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/harness-security.html#harness-iam-permissions)
+and expect to add grants on a first run in a fresh account; the AWS guide is the
+source of truth as the service evolves.
 
 > A future `agentcore iam create-execution-role` CLI command will generate the
 > role automatically (separate workstream).

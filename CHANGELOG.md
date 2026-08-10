@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **A harness stayed in its VPC after the credential was switched back to Public.**
+  `UpdateHarness` treats an omitted field as "keep the stored value", and the update
+  payload omitted `environment` whenever nothing was configured, so a harness created
+  in VPC mode kept running in that VPC indefinitely. The harness version incremented
+  on every run while `networkMode` never changed. The update path now always states
+  the environment, including an explicit `PUBLIC` when the credential asks for no
+  VPC. `CreateHarness` still omits the field, where omission correctly means "use the
+  service default". Covered by `test/environment.test.ts`.
+- **"Agent Name is required" when Harness ARN held an expression.** `displayOptions`
+  matches the raw parameter value, so an expression such as
+  `{{ $json.harnessArn }}` is not `''` and the Agent Name field is hidden, but n8n's
+  pre-flight validator still enforced `required: true` and blocked the workflow with
+  a message about a field the user could not see. Agent Name is now validated inside
+  the Run Agent path, which is the only path that reads it, with a message that names
+  both ways to resolve it.
+
+### Changed
+
+- **The harness summary no longer implies an agent has no tools.** `toolCount` counts
+  the tools the node configured, but every harness session also has the built-in
+  shell and file editor inside its microVM, so a run could report `toolCount: 0`
+  alongside `toolUses` entries for the shell. The summary now also reports
+  `configuredToolCount` and `builtInToolsAvailable`. `toolCount` is retained so
+  existing workflows keep working. Reported by n8n partner engineering.
+- **Corrected the `iam:PassRole` guidance in the README and spec.** Both stated it
+  was not required. That holds for the harness API itself, but `CreateHarness`
+  provisions an AgentCore Runtime, a runtime endpoint, a memory store and a workload
+  identity, and IAM authorizes each against its own resource type, so a first run in
+  a fresh account can need `iam:PassRole` plus `CreateAgentRuntime`,
+  `CreateAgentRuntimeEndpoint`, `iam:CreateServiceLinkedRole` and
+  `CreateWorkloadIdentity`. Reported by n8n partner engineering.
+
 ### Added
 
 - **End-to-end templates** in `examples/templates/`: a chat assistant with

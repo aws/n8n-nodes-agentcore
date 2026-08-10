@@ -110,6 +110,34 @@ export function buildEnvironment(input: EnvironmentInput): IDataObject | undefin
 	return { agentCoreRuntimeEnvironment: runtimeEnv };
 }
 
+/**
+ * Builds the `environment` value for UpdateHarness.
+ *
+ * `buildEnvironment` returns `undefined` when there is nothing to configure —
+ * no VPC and no mounts — which is the right shape for CreateHarness, where an
+ * omitted field means "use the service default". On UpdateHarness an omitted
+ * field means "leave the stored value alone", so returning `undefined` there
+ * would strand a harness in its previous environment: switching the credential
+ * from VPC back to Public left the harness running in the VPC forever.
+ *
+ * The service accepts an explicit PUBLIC network configuration, so instead of
+ * omitting the field we send the environment the credential actually describes.
+ * `memory` and `environmentArtifact` solve the same problem with the
+ * `optionalValue` envelope; `environment` is not an optional-value field in the
+ * API, so an explicit value is the equivalent.
+ */
+export function buildEnvironmentUpdate(input: EnvironmentInput): IDataObject {
+	const value = buildEnvironment(input);
+	if (value !== undefined) return value;
+	// Nothing configured: state the default explicitly so an earlier VPC (or
+	// filesystem) configuration is replaced rather than silently retained.
+	return {
+		agentCoreRuntimeEnvironment: {
+			networkConfiguration: { networkMode: 'PUBLIC' },
+		},
+	};
+}
+
 /** Builds the `environmentArtifact` union for a custom container image. */
 export function buildEnvironmentArtifact(
 	containerUri: string | undefined,

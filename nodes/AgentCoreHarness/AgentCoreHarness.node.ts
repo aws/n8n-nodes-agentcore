@@ -25,6 +25,7 @@ import {
 	buildEnvironment,
 	buildEnvironmentArtifact,
 	buildEnvironmentArtifactUpdate,
+	buildEnvironmentUpdate,
 	type FilesystemMount,
 } from './helpers/environment';
 import { buildSkillsArray } from './helpers/skills';
@@ -381,6 +382,7 @@ async function runAgent(
 		}),
 		environment,
 		environmentArtifact,
+		environmentUpdate: buildEnvironmentUpdate({ vpc, mounts }),
 		environmentArtifactUpdate: buildEnvironmentArtifactUpdate(containerUri),
 		maxIterations: cfg.maxIterations,
 		maxTokens: cfg.maxTokens,
@@ -750,6 +752,13 @@ export function validateBearerToken(token: string): INodeCredentialTestResult {
 }
 
 function validateAgentName(name: string): void {
+	// Only reached in Run Agent mode (blank Harness ARN), so a missing value is a
+	// distinct case from a malformed one and deserves its own message.
+	if (!name.trim()) {
+		throw new ApplicationError(
+			'Agent Name is required when Harness ARN is blank. Enter a name for the node to provision and reuse, or provide a Harness ARN to invoke an existing agent.',
+		);
+	}
 	if (!/^[A-Za-z][A-Za-z0-9_]{0,39}$/.test(name)) {
 		throw new ApplicationError(
 			`Invalid agent name: "${name}". Must start with a letter and contain only letters, numbers, and underscores (max 40 chars).`,
@@ -882,7 +891,18 @@ function summarizeHarness(h: any): IDataObject {
 	const containerUri = h.environmentArtifact?.containerConfiguration?.containerUri;
 	if (containerUri) summary.containerUri = containerUri;
 
-	if (Array.isArray(h.tools)) summary.toolCount = h.tools.length;
+	// `configuredToolCount` counts the tools this node configured. It is NOT the
+	// number of tools the agent can reach: every harness session also has the
+	// built-in shell and file editor inside its microVM, which is why a session
+	// can show `toolUses` entries while this count is 0. `builtInToolsAvailable`
+	// records that so the summary cannot be read as "the agent has no tools".
+	// Reported by n8n partner engineering, August 2026.
+	if (Array.isArray(h.tools)) {
+		summary.configuredToolCount = h.tools.length;
+		// Retained for compatibility with workflows that read the old field.
+		summary.toolCount = h.tools.length;
+	}
+	summary.builtInToolsAvailable = true;
 	if (Array.isArray(h.skills)) summary.skillCount = h.skills.length;
 
 	return summary;
@@ -925,6 +945,7 @@ interface ProvisionInput {
 	environment?: IDataObject;
 	environmentArtifact?: IDataObject;
 	environmentArtifactUpdate?: IDataObject;
+	environmentUpdate?: IDataObject;
 	maxIterations?: number;
 	maxTokens?: number;
 	timeoutSeconds?: number;
@@ -987,7 +1008,10 @@ async function updateHarness(
 	if (input.skills.length > 0) payload.skills = input.skills;
 	// Memory + environmentArtifact use the optionalValue wrapper on update.
 	if (input.memoryUpdate) payload.memory = input.memoryUpdate;
-	if (input.environment) payload.environment = input.environment;
+	// Always send `environment`. An omitted field on UpdateHarness means "keep the
+	// stored value", so omitting it stranded a harness in its VPC after the
+	// credential was switched back to Public.
+	if (input.environmentUpdate) payload.environment = input.environmentUpdate;
 	if (input.environmentArtifactUpdate) {
 		payload.environmentArtifact = input.environmentArtifactUpdate;
 	}
