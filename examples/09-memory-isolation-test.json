@@ -7,22 +7,22 @@
     {
       "parameters": {
         "content": "## Memory persistence & actor isolation test\n\nGo/no-go check for the two claims every memory-based template depends on.\n\n### How it works\nThree webhook paths hit ONE auto-provisioned harness with managed memory.\n\n1. `POST /memory-test-store`: actor A stores a codename.\n2. `POST /memory-test-recall` — actor A asks for it back, in a **separate execution**. Must return the codename.\n3. `POST /memory-test-isolate`: actor B asks the same question on the **same Session ID**. Must NOT return the codename.\n\nThe verdict node asserts each result and returns `pass: true|false`, so you never have to eyeball the prose.\n\n### Setup\n1. Add an **Amazon Bedrock AgentCore API** credential (AWS keys, region, execution role ARN).\n2. Select it on all three AgentCore nodes.\n3. Activate the workflow, then run the three curl commands in the grey sticky **in order**.\n\nStep 1 provisions the harness and takes ~30 seconds. Steps 2 and 3 return in a few seconds.\n\n### Why it matters\nRecall proves memory survives across executions. Isolation proves one actor's memory never reaches another. Both must pass before any template claims per-user memory.",
-        "height": 660,
-        "width": 460
+        "height": 880,
+        "width": 520
       },
       "id": "sticky-overview",
       "name": "Sticky Note",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        -1180,
-        -40
+        -1300,
+        280
       ]
     },
     {
       "parameters": {
         "content": "## Run these in order\n\n```\ncurl -X POST \\\n  <base>/memory-test-store\n\ncurl -X POST \\\n  <base>/memory-test-recall\n\ncurl -X POST \\\n  <base>/memory-test-isolate\n```\n\nWait ~15s between calls. Copy `<base>` from a Webhook node's Production URL.",
-        "height": 220,
+        "height": 360,
         "width": 1000,
         "color": 7
       },
@@ -31,14 +31,14 @@
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        -120,
-        880
+        -100,
+        1600
       ]
     },
     {
       "parameters": {
         "content": "## 1. Store (actor A)\nWrites the codename into managed memory under `actor-a`.",
-        "height": 200,
+        "height": 320,
         "width": 1000,
         "color": 7
       },
@@ -47,14 +47,14 @@
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        -120,
-        -40
+        -100,
+        280
       ]
     },
     {
       "parameters": {
         "content": "## 2. Recall (actor A, separate execution)\nSame Actor ID, same Session ID, brand new execution. Expects the codename back.",
-        "height": 200,
+        "height": 320,
         "width": 1000,
         "color": 7
       },
@@ -63,14 +63,14 @@
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        -120,
-        300
+        -100,
+        680
       ]
     },
     {
       "parameters": {
         "content": "## 3. Isolate (actor B, same session)\nOnly the Actor ID changes. A leak here means per-user memory is unsafe to ship.",
-        "height": 200,
+        "height": 320,
         "width": 1000,
         "color": 7
       },
@@ -79,8 +79,8 @@
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        -120,
-        640
+        -100,
+        1080
       ]
     },
     {
@@ -126,8 +126,8 @@
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        140,
-        40
+        240,
+        400
       ]
     },
     {
@@ -141,8 +141,8 @@
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
       "position": [
-        -60,
-        40
+        0,
+        400
       ]
     },
     {
@@ -164,8 +164,8 @@
       "type": "@aws/n8n-nodes-agentcore.agentCoreHarness",
       "typeVersion": 2,
       "position": [
-        420,
-        40
+        480,
+        400
       ],
       "credentials": {
         "agentCoreApi": {
@@ -183,8 +183,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        700,
-        40
+        720,
+        400
       ]
     },
     {
@@ -198,8 +198,8 @@
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
       "position": [
-        -60,
-        380
+        0,
+        800
       ]
     },
     {
@@ -239,8 +239,8 @@
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        140,
-        380
+        240,
+        800
       ]
     },
     {
@@ -262,8 +262,8 @@
       "type": "@aws/n8n-nodes-agentcore.agentCoreHarness",
       "typeVersion": 2,
       "position": [
-        420,
-        380
+        480,
+        800
       ],
       "credentials": {
         "agentCoreApi": {
@@ -281,8 +281,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        700,
-        380
+        720,
+        800
       ]
     },
     {
@@ -296,8 +296,8 @@
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
       "position": [
-        -60,
-        720
+        0,
+        1200
       ]
     },
     {
@@ -337,8 +337,8 @@
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        140,
-        720
+        240,
+        1200
       ]
     },
     {
@@ -360,8 +360,8 @@
       "type": "@aws/n8n-nodes-agentcore.agentCoreHarness",
       "typeVersion": 2,
       "position": [
-        420,
-        720
+        480,
+        1200
       ],
       "credentials": {
         "agentCoreApi": {
@@ -379,8 +379,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        700,
-        720
+        720,
+        1200
       ]
     }
   ],

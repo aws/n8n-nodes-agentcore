@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`examples/templates/build-a-multi-agent-support-team-with-shared-customer-memory.json`**
+  — a triage agent routes each question to one of three specialists. All four run
+  on one harness with tools granted per invocation, and share one memory per
+  customer scoped by Actor ID.
+- **`scripts/check-sticky-fit.mjs`** — checks sticky notes against how current n8n
+  renders them: content that clips, nodes covering sticky text, node name labels
+  spilling outside their group, sticky overlaps, and unused empty space.
+
+### Fixed
+
+- **Sticky-note layout in every template.** Node name labels render wider than the
+  node icon, so nodes near a sticky edge pushed their labels outside the group, and
+  nodes placed too high covered the sticky's own text. n8n's template review
+  reported both. Every workflow is relaid out with the node row below each sticky's
+  measured text and margins wide enough for labels.
+
+### Added
+
 - **End-to-end templates** in `examples/templates/`: a chat assistant with
   per-customer long-term memory, a webhook-driven statistics workflow that
   computes in the code interpreter and independently verifies the result in n8n,
