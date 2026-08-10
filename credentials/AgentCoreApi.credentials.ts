@@ -61,6 +61,12 @@ export class AgentCoreApi implements ICredentialType {
 			displayName: 'Region',
 			name: 'region',
 			type: 'options',
+			// Regions where AgentCore *harness* is available, per
+			// https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/agentcore-regions.html
+			// Harness ships in fewer Regions than most other AgentCore capabilities:
+			// Milan, Spain, Malaysia, Thailand and GovCloud (US-West) run Runtime,
+			// Gateway and Identity but not harness, so they are deliberately absent.
+			// Check the harness row specifically before adding a Region here.
 			options: [
 				{ name: 'Asia Pacific (Mumbai) - ap-south-1', value: 'ap-south-1' },
 				{ name: 'Asia Pacific (Seoul) - ap-northeast-2', value: 'ap-northeast-2' },
@@ -81,7 +87,7 @@ export class AgentCoreApi implements ICredentialType {
 			default: 'us-west-2',
 			required: true,
 			description:
-				'AWS Region where AgentCore harness is available. Refer to the AgentCore Regions documentation for the current list, since regions are added over time: https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/agentcore-regions.html',
+				'AWS Region to call. Harness is available in fewer Regions than other AgentCore capabilities, so check the harness row in https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/agentcore-regions.html if your Region is missing.',
 		},
 		{
 			displayName: 'Execution Role ARN',

@@ -16,8 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The Region value is only interpolated into the API hostname and was never
   validated against that list, so the restriction was UI-only. Added Ohio,
   Ireland, London, Paris, Stockholm, Mumbai, Singapore, Tokyo, Seoul, Canada
-  (Central), and Sao Paulo. The field description now links the AgentCore Regions
-  documentation, since Regions are added over time.
+  (Central), and Sao Paulo. Milan, Spain, Malaysia, Thailand and GovCloud stay out
+  deliberately: they run other AgentCore capabilities but not harness. The field
+  description now points at the AgentCore Regions documentation, since Regions are
+  added over time.
 
 ### Added
 
