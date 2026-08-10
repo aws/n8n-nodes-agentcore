@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Region dropdown now lists every AgentCore harness Region.** The credential
+  offered only four (`us-east-1`, `us-west-2`, `ap-southeast-2`, `eu-central-1`)
+  while harness is available in 15, so customers in Regions such as Europe
+  (Ireland) could not select their Region even though the service supported it.
+  The Region value is only interpolated into the API hostname and was never
+  validated against that list, so the restriction was UI-only. Added Ohio,
+  Ireland, London, Paris, Stockholm, Mumbai, Singapore, Tokyo, Seoul, Canada
+  (Central), and Sao Paulo. The field description now links the AgentCore Regions
+  documentation, since Regions are added over time.
+
 ### Added
 
 - **End-to-end templates** in `examples/templates/`: a chat assistant with
