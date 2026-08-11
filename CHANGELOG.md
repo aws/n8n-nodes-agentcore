@@ -24,6 +24,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   nodes placed too high covered the sticky's own text. n8n's template review
   reported both. Every workflow is relaid out with the node row below each sticky's
   measured text and margins wide enough for labels.
+- **The chat templates returned an empty reply.** At `typeVersion` 1.1 with
+  `public: false` the Chat Trigger has no `responseMode`, so it answered the browser
+  as soon as the message arrived and the agent's reply never reached the chat panel.
+  `add-long-term-memory-to-an-n8n-ai-agent` and
+  `remember-each-customer-across-chat-sessions` now use `typeVersion` 1.4 with
+  `responseMode: lastNode`, matching the multi-agent template.
 
 ### Added
 
