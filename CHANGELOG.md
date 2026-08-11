@@ -9,30 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Region dropdown now lists every AgentCore harness Region.** The credential
-  offered only four (`us-east-1`, `us-west-2`, `ap-southeast-2`, `eu-central-1`)
-  while harness is available in 15, so customers in Regions such as Europe
-  (Ireland) could not select their Region even though the service supported it.
-  The Region value is only interpolated into the API hostname and was never
-  validated against that list, so the restriction was UI-only. Added Ohio,
-  Ireland, London, Paris, Stockholm, Mumbai, Singapore, Tokyo, Seoul, Canada
-  (Central), and Sao Paulo. Milan, Spain, Malaysia, Thailand and GovCloud stay out
-  deliberately: they run other AgentCore capabilities but not harness. The field
-  description now points at the AgentCore Regions documentation, since Regions are
-  added over time.
-
-### Added
-
-- **`examples/templates/build-a-multi-agent-support-team-with-shared-customer-memory.json`**
-  — a triage agent routes each question to one of three specialists. All four run
-  on one harness with tools granted per invocation, and share one memory per
-  customer scoped by Actor ID.
-- **`scripts/check-sticky-fit.mjs`** — checks sticky notes against how current n8n
-  renders them: content that clips, nodes covering sticky text, node name labels
-  spilling outside their group, sticky overlaps, and unused empty space.
-
-### Fixed
-
+- **A harness stayed in its VPC after the credential was switched back to Public.**
+  `UpdateHarness` treats an omitted field as "keep the stored value", and the update
+  payload omitted `environment` whenever nothing was configured, so a harness created
+  in VPC mode kept running in that VPC indefinitely. The harness version incremented
+  on every run while `networkMode` never changed. The update path now always states
+  the environment, including an explicit `PUBLIC` when the credential asks for no
+  VPC. `CreateHarness` still omits the field, where omission correctly means "use the
+  service default". Covered by `test/environment.test.ts`.
+- **"Agent Name is required" when Harness ARN held an expression.** `displayOptions`
+  matches the raw parameter value, so an expression such as
+  `{{ $json.harnessArn }}` is not `''` and the Agent Name field is hidden, but n8n's
+  pre-flight validator still enforced `required: true` and blocked the workflow with
+  a message about a field the user could not see. Agent Name is now validated inside
+  the Run Agent path, which is the only path that reads it, with a message that names
+  both ways to resolve it.
 - **Sticky-note layout in every template.** Node name labels render wider than the
   node icon, so nodes near a sticky edge pushed their labels outside the group, and
   nodes placed too high covered the sticky's own text. n8n's template review
@@ -47,6 +38,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`examples/templates/build-a-multi-agent-support-team-with-shared-customer-memory.json`**
+  — a triage agent routes each question to one of three specialists. All four run
+  on one harness with tools granted per invocation, and share one memory per
+  customer scoped by Actor ID.
+- **`scripts/check-sticky-fit.mjs`** — checks sticky notes against how current n8n
+  renders them: content that clips, nodes covering sticky text, node name labels
+  spilling outside their group, sticky overlaps, and unused empty space.
 - **End-to-end templates** in `examples/templates/`: a chat assistant with
   per-customer long-term memory, a webhook-driven statistics workflow that
   computes in the code interpreter and independently verifies the result in n8n,
@@ -65,6 +63,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The harness summary no longer implies an agent has no tools.** `toolCount` counts
+  the tools the node configured, but every harness session also has the built-in
+  shell and file editor inside its microVM, so a run could report `toolCount: 0`
+  alongside `toolUses` entries for the shell. The summary now also reports
+  `configuredToolCount` and `builtInToolsAvailable`. `toolCount` is retained so
+  existing workflows keep working. Reported by n8n partner engineering.
+- **Corrected the `iam:PassRole` guidance in the README and spec.** Both stated it
+  was not required. That holds for the harness API itself, but `CreateHarness`
+  provisions an AgentCore Runtime, a runtime endpoint, a memory store and a workload
+  identity, and IAM authorizes each against its own resource type, so a first run in
+  a fresh account can need `iam:PassRole` plus `CreateAgentRuntime`,
+  `CreateAgentRuntimeEndpoint`, `iam:CreateServiceLinkedRole` and
+  `CreateWorkloadIdentity`. Reported by n8n partner engineering.
+- **Region dropdown now lists every AgentCore harness Region.** The credential
+  offered only four (`us-east-1`, `us-west-2`, `ap-southeast-2`, `eu-central-1`)
+  while harness is available in 15, so customers in Regions such as Europe
+  (Ireland) could not select their Region even though the service supported it.
+  The Region value is only interpolated into the API hostname and was never
+  validated against that list, so the restriction was UI-only. Added Ohio,
+  Ireland, London, Paris, Stockholm, Mumbai, Singapore, Tokyo, Seoul, Canada
+  (Central), and Sao Paulo. Milan, Spain, Malaysia, Thailand and GovCloud stay out
+  deliberately: they run other AgentCore capabilities but not harness. The field
+  description now points at the AgentCore Regions documentation, since Regions are
+  added over time.
 - **VPC guidance corrected: VPC endpoints, not a NAT gateway.** AgentCore changed
   how a VPC-mode harness pulls its managed container. It now comes from a
   **private ECR repository in the harness Region** rather than ECR Public, so the

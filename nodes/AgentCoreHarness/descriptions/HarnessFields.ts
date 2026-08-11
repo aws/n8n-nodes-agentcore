@@ -42,7 +42,11 @@ export const harnessFields: INodeProperties[] = [
 		name: 'agentName',
 		type: 'string',
 		default: '',
-		required: true,
+		// Not `required`. `displayOptions` matches the raw parameter value, so an
+		// expression in Harness ARN does not equal '' and the field is hidden — but
+		// n8n's pre-flight validator still enforced `required`, telling the user to
+		// fill a field the UI had hidden. runAgent() validates it instead, which is
+		// the only path that uses it.
 		displayOptions: RUN_ONLY,
 		placeholder: 'my_research_agent',
 		description:
