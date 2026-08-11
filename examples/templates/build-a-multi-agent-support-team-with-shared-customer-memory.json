@@ -1,0 +1,556 @@
+{
+  "name": "Build a multi-agent support team with shared customer memory using Amazon Bedrock AgentCore",
+  "meta": {
+    "instanceId": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## A team of agents that remembers each customer\n\nAsk a question in the chat. A triage agent decides who should answer and routes to one of three specialists, whose answer goes to Slack.\n\nWatch the second question. Every agent runs on **one** AgentCore harness, and each call carries an **Actor ID** for the customer, so the specialist answering now uses what another learned earlier. The team builds one memory of that person. Change the Actor ID and you get a separate memory from the same agents.\n\n### How it works\n\n1. **When Chat Message Received** starts a run per message.\n2. **Set Customer Context** holds the Actor ID and the Slack channel.\n3. **Triage Agent** provisions the shared harness on first run and returns a category as JSON.\n4. **Route To Specialist** picks one specialist.\n5. Each specialist invokes the **same harness** by ARN, with different tools granted for that call.\n6. **Post Answer To Slack** sends the reply, tagged with which specialist answered.\n\n### Setup\n\n1. Add an **Amazon Bedrock AgentCore API** credential and select it on all four agent nodes.\n2. Add a **Slack** credential, set `slackChannel` in Set Customer Context, and invite the bot to that channel.\n3. Open the chat and ask a question.\n\nFirst run takes 2 to 3 minutes while the harness is created. Only Triage provisions, so there is one billed harness, not four.\n\n### Customization\n\nMemory is a harness setting, so it lives on Triage under Provisioning Options, not on the specialists. **Agent Name is the key to the whole team's memory**; change it and the team starts over. `customerId` comes from the chat session here. In production, set it from your own user, account, or ticket ID so memory follows the person.",
+        "width": 520,
+        "height": 1040
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -700,
+        80
+      ],
+      "id": "sticky-overview",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "## Who is asking\n\nThe chat session becomes the Actor ID, so each conversation is its own customer. In production, set `customerId` from your own user or ticket ID.",
+        "width": 540,
+        "height": 520,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -100,
+        80
+      ],
+      "id": "sticky-identity",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "content": "## Triage, and the one harness\n\nBlank Harness ARN, so this node creates the shared harness and returns its ARN for the specialists. Its Agent Name is the memory key: change it and the team starts over.",
+        "width": 540,
+        "height": 520,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        520,
+        80
+      ],
+      "id": "sticky-triage",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "content": "## Three specialists, one harness\n\nEach invokes the same harness by ARN with different tools granted for that call, and the same Actor ID, so they share what they learn about this customer.",
+        "width": 560,
+        "height": 880,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1140,
+        80
+      ],
+      "id": "sticky-specialists",
+      "name": "Sticky Note3"
+    },
+    {
+      "parameters": {
+        "content": "## Send the answer\n\nThe reply goes to the Slack channel set in Set Customer Context, tagged with which specialist answered.",
+        "width": 540,
+        "height": 780,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1760,
+        80
+      ],
+      "id": "sticky-reply",
+      "name": "Sticky Note4"
+    },
+    {
+      "parameters": {
+        "content": "## Try it\n\nAsk all three in one chat:\n\n1. `p99 was 120, 340, 95, 610, 210 ms, mean and standard deviation?`\n2. `given that, how should I structure a serverless pipeline?`\n3. `what could cause a latency regression overnight?`\n\nDifferent specialist each time, same memory.",
+        "width": 520,
+        "height": 400,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -700,
+        1180
+      ],
+      "id": "sticky-tryit",
+      "name": "Sticky Note5"
+    },
+    {
+      "parameters": {
+        "public": false,
+        "mode": "hostedChat",
+        "options": {
+          "responseMode": "lastNode"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        340
+      ],
+      "id": "chat-trigger",
+      "name": "When Chat Message Received",
+      "webhookId": "44444444-4444-4444-8444-444444444444"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ctx-1",
+              "name": "agentName",
+              "type": "string",
+              "value": "support_team"
+            },
+            {
+              "id": "ctx-2",
+              "name": "customerId",
+              "type": "string",
+              "value": "={{ $json.sessionId }}"
+            },
+            {
+              "id": "ctx-3",
+              "name": "question",
+              "type": "string",
+              "value": "={{ $json.chatInput }}"
+            },
+            {
+              "id": "ctx-4",
+              "name": "slackChannel",
+              "type": "string",
+              "value": "#support"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        240,
+        340
+      ],
+      "id": "set-context",
+      "name": "Set Customer Context"
+    },
+    {
+      "parameters": {
+        "agentName": "={{ $json.agentName }}",
+        "modelProvider": "bedrock",
+        "modelId": "global.anthropic.claude-opus-4-8",
+        "systemPrompt": "You are the triage agent for a customer support team. Classify the customer's message into exactly one category:\n\n- \"analysis\" when the message contains numbers the customer wants computed or compared.\n- \"advice\" when the message asks for architecture, design, or best-practice guidance.\n- \"research\" for anything else, including troubleshooting and open questions.\n\nReply with a single JSON object and nothing else, using exactly these keys: category, summary. The summary is one short sentence restating what the customer wants.",
+        "prompt": "={{ $json.question }}",
+        "sessionId": "={{ 'cust-' + $json.customerId }}",
+        "additionalOptions": {
+          "actorId": "={{ $json.customerId }}",
+          "timeoutSeconds": 300
+        },
+        "provisioningOptions": {
+          "memoryMode": "managed",
+          "memoryStrategies": [
+            "SEMANTIC",
+            "SUMMARIZATION",
+            "USER_PREFERENCE"
+          ]
+        }
+      },
+      "type": "@aws/n8n-nodes-agentcore.agentCoreHarness",
+      "typeVersion": 2,
+      "position": [
+        620,
+        340
+      ],
+      "id": "triage",
+      "name": "Triage Agent",
+      "credentials": {
+        "agentCoreApi": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "Amazon Bedrock AgentCore API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// The triage agent is asked for bare JSON and reliably returns it, but a model\n// can still wrap output in a fence or add a sentence. Try every shape, and fall\n// back to research rather than dropping a customer's question.\nconst raw = String($json.response ?? '').trim();\n\nfunction extractJson(text) {\n  const fenced = text.match(/```(?:json)?\\s*([\\s\\S]*?)```/);\n  const candidate = fenced ? fenced[1].trim() : text;\n  try {\n    return JSON.parse(candidate);\n  } catch {}\n  const start = candidate.indexOf('{');\n  const end = candidate.lastIndexOf('}');\n  if (start !== -1 && end > start) {\n    try {\n      return JSON.parse(candidate.slice(start, end + 1));\n    } catch {}\n  }\n  return null;\n}\n\nconst parsed = extractJson(raw) ?? {};\nconst allowed = ['analysis', 'advice', 'research'];\nconst category = allowed.includes(parsed.category) ? parsed.category : 'research';\nconst ctx = $('Set Customer Context').item.json;\n\nreturn [{\n  json: {\n    category,\n    routedByFallback: !allowed.includes(parsed.category),\n    summary: parsed.summary ?? ctx.question,\n    question: ctx.question,\n    customerId: ctx.customerId,\n    // Every specialist reuses this ARN, so only this run provisioned a harness.\n    harnessArn: $json.harnessArn,\n  },\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        860,
+        340
+      ],
+      "id": "parse-triage",
+      "name": "Read Triage Decision"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "version": 2,
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "r-analysis",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.category }}",
+                    "rightValue": "analysis"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "analysis"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "version": 2,
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "r-advice",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.category }}",
+                    "rightValue": "advice"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "advice"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "version": 2,
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "r-research",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.category }}",
+                    "rightValue": "research"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "research"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1240,
+        340
+      ],
+      "id": "route",
+      "name": "Route To Specialist"
+    },
+    {
+      "parameters": {
+        "harnessArn": "={{ $json.harnessArn }}",
+        "agentName": "support_team",
+        "systemPrompt": "You are the analysis specialist on a customer support team. Compute every number by writing and running Python in the code interpreter. Never estimate and never do mental arithmetic. Use what you remember about this customer where it is relevant. Answer in at most four short sentences, suitable for a Slack reply.",
+        "prompt": "={{ $json.question }}",
+        "addTools": true,
+        "tools": {
+          "tool": [
+            {
+              "name": "code_interpreter",
+              "type": "agentcore_code_interpreter"
+            }
+          ]
+        },
+        "sessionId": "={{ 'cust-' + $json.customerId }}",
+        "additionalOptions": {
+          "actorId": "={{ $json.customerId }}",
+          "timeoutSeconds": 300
+        }
+      },
+      "type": "@aws/n8n-nodes-agentcore.agentCoreHarness",
+      "typeVersion": 2,
+      "position": [
+        1480,
+        340
+      ],
+      "id": "spec-analysis",
+      "name": "Analysis Specialist",
+      "credentials": {
+        "agentCoreApi": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "Amazon Bedrock AgentCore API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "harnessArn": "={{ $json.harnessArn }}",
+        "agentName": "support_team",
+        "systemPrompt": "You are the architecture specialist on a customer support team. Use the loaded AWS skills for design and best-practice guidance, and use what you remember about this customer, including their scale and region, where it is relevant. Answer in at most four short sentences, suitable for a Slack reply.",
+        "prompt": "={{ $json.question }}",
+        "addSkills": true,
+        "skills": {
+          "skill": [
+            {
+              "source": "awsSkills",
+              "paths": "core-skills/*"
+            }
+          ]
+        },
+        "sessionId": "={{ 'cust-' + $json.customerId }}",
+        "additionalOptions": {
+          "actorId": "={{ $json.customerId }}",
+          "timeoutSeconds": 300
+        }
+      },
+      "type": "@aws/n8n-nodes-agentcore.agentCoreHarness",
+      "typeVersion": 2,
+      "position": [
+        1480,
+        540
+      ],
+      "id": "spec-advice",
+      "name": "Architecture Specialist",
+      "credentials": {
+        "agentCoreApi": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "Amazon Bedrock AgentCore API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "harnessArn": "={{ $json.harnessArn }}",
+        "agentName": "support_team",
+        "systemPrompt": "You are the research specialist on a customer support team. Investigate the question using the shell and file tools in your sandbox where that helps, and use what you remember about this customer. If you are not certain, say what you would check next rather than guessing. Answer in at most four short sentences, suitable for a Slack reply.",
+        "prompt": "={{ $json.question }}",
+        "sessionId": "={{ 'cust-' + $json.customerId }}",
+        "additionalOptions": {
+          "actorId": "={{ $json.customerId }}",
+          "timeoutSeconds": 300
+        }
+      },
+      "type": "@aws/n8n-nodes-agentcore.agentCoreHarness",
+      "typeVersion": 2,
+      "position": [
+        1480,
+        740
+      ],
+      "id": "spec-research",
+      "name": "Research Specialist",
+      "credentials": {
+        "agentCoreApi": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "Amazon Bedrock AgentCore API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// One specialist ran, so exactly one branch reaches here. Unwrap fenced output\n// and never post an empty message to Slack.\nconst raw = String($json.response ?? '').trim();\n\nlet text = raw;\nconst fenced = raw.match(/^```(?:json)?\\s*([\\s\\S]*?)```$/);\nif (fenced) text = fenced[1].trim();\n\nif (!text) {\n  text = 'The agent returned an empty response, which is usually a transient service error. Please ask again.';\n}\n\nconst ctx = $('Read Triage Decision').item.json;\n\nreturn [{\n  json: {\n    reply: text,\n    answeredBy: ctx.category,\n    customerId: ctx.customerId,\n    usedCodeInterpreter: Array.isArray($json.toolUses)\n      && $json.toolUses.some((t) => String(t?.name ?? '').includes('code_interpreter')),\n    latencyMs: $json.latencyMs ?? null,\n  },\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1860,
+        540
+      ],
+      "id": "format-reply",
+      "name": "Format Reply"
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "={{ $('Set Customer Context').item.json.slackChannel }}"
+        },
+        "text": "=*Answered by the {{ $json.answeredBy }} specialist* (customer: {{ $json.customerId }})\n\n{{ $json.reply }}",
+        "otherOptions": {
+          "includeLinkToWorkflow": false
+        }
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.5,
+      "position": [
+        2100,
+        540
+      ],
+      "id": "reply",
+      "name": "Post Answer To Slack",
+      "credentials": {
+        "slackApi": {
+          "id": "REPLACE_WITH_YOUR_SLACK_CREDENTIAL_ID",
+          "name": "Slack account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Set Customer Context": {
+      "main": [
+        [
+          {
+            "node": "Triage Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Triage Agent": {
+      "main": [
+        [
+          {
+            "node": "Read Triage Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Triage Decision": {
+      "main": [
+        [
+          {
+            "node": "Route To Specialist",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route To Specialist": {
+      "main": [
+        [
+          {
+            "node": "Analysis Specialist",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Architecture Specialist",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Research Specialist",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analysis Specialist": {
+      "main": [
+        [
+          {
+            "node": "Format Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Architecture Specialist": {
+      "main": [
+        [
+          {
+            "node": "Format Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Research Specialist": {
+      "main": [
+        [
+          {
+            "node": "Format Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Reply": {
+      "main": [
+        [
+          {
+            "node": "Post Answer To Slack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When Chat Message Received": {
+      "main": [
+        [
+          {
+            "node": "Set Customer Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {}
+}
