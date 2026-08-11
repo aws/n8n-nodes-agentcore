@@ -7,23 +7,23 @@
     {
       "parameters": {
         "content": "## Keep your AI Agent, add memory that lasts\n\nn8n's AI Agent with Simple Memory forgets everything once the buffer rolls over. This template keeps the AI Agent exactly where it is and attaches Amazon Bedrock AgentCore as a **tool**, so the agent can store and retrieve facts about a person that survive across executions.\n\n### How it works\n1. **When chat message received** starts a run per message.\n2. **Set User Identity** resolves who is talking.\n3. **AI Agent** handles the conversation, with:\n   - **OpenAI Chat Model** for the reply,\n   - **Simple Memory** for the last few turns of this chat,\n   - **Long-Term Memory** (Amazon Bedrock AgentCore, used as a tool) for anything that must outlive the buffer.\n4. The system message tells the agent to call the tool when it learns a durable fact and when it needs history it cannot see.\n\nShort-term recall stays fast and local. Long-term recall is scoped per person by **Actor ID**, so one user's history never reaches another.\n\n### Setup\n1. Add an **Amazon Bedrock AgentCore API** credential and select it on **Long-Term Memory**.\n2. Add an **OpenAI** credential on the chat model, or swap in any other chat model.\n3. In **Set User Identity**, map `userId` to your real user identifier. It defaults to the chat session so the template runs as imported.\n\nThe first tool call takes ~30 seconds while the harness is created, then a few seconds.\n\n### Customization\nReplace the Chat Trigger with Slack and map `userId` to the Slack user ID. Tighten the system message if you want the agent to write to long-term memory less often.",
-        "height": 800,
-        "width": 480
+        "height": 1000,
+        "width": 520
       },
       "id": "sticky-overview",
       "name": "Sticky Note",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        -660,
-        -200
+        -700,
+        280
       ]
     },
     {
       "parameters": {
         "content": "## Who is talking\nActor ID must be stable per person, or long-term memory has nothing to key on.",
-        "height": 300,
-        "width": 420,
+        "height": 344,
+        "width": 540,
         "color": 7
       },
       "id": "sticky-identity",
@@ -31,14 +31,14 @@
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        -140,
-        20
+        -100,
+        280
       ]
     },
     {
       "parameters": {
         "content": "## The agent you already know\nUnchanged n8n AI Agent. Simple Memory still covers the current conversation.",
-        "height": 300,
+        "height": 344,
         "width": 300,
         "color": 7
       },
@@ -47,15 +47,15 @@
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        300,
-        20
+        520,
+        280
       ]
     },
     {
       "parameters": {
         "content": "## Memory that outlives the buffer\nAgentCore attached as a tool. The agent decides when to write and when to read.",
-        "height": 280,
-        "width": 620,
+        "height": 344,
+        "width": 700,
         "color": 7
       },
       "id": "sticky-tools",
@@ -63,21 +63,25 @@
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        180,
-        380
+        380,
+        640
       ]
     },
     {
       "parameters": {
-        "options": {}
+        "options": {
+          "responseMode": "lastNode"
+        },
+        "public": false,
+        "mode": "hostedChat"
       },
       "id": "chat-trigger",
       "name": "When chat message received",
       "type": "@n8n/n8n-nodes-langchain.chatTrigger",
-      "typeVersion": 1.1,
+      "typeVersion": 1.4,
       "position": [
-        -100,
-        140
+        0,
+        423
       ],
       "webhookId": "33333333-3333-4333-8333-333333333333"
     },
@@ -106,8 +110,8 @@
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        140,
-        140
+        240,
+        423
       ]
     },
     {
@@ -123,8 +127,8 @@
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 1.7,
       "position": [
-        400,
-        140
+        620,
+        764
       ]
     },
     {
@@ -136,8 +140,8 @@
       "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
       "typeVersion": 1,
       "position": [
-        260,
-        460
+        480,
+        764
       ],
       "credentials": {
         "openAiApi": {
@@ -156,8 +160,8 @@
       "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
       "typeVersion": 1.3,
       "position": [
-        440,
-        460
+        700,
+        764
       ]
     },
     {
@@ -186,8 +190,8 @@
       "type": "@aws/n8n-nodes-agentcore.agentCoreHarnessTool",
       "typeVersion": 2,
       "position": [
-        640,
-        460
+        920,
+        764
       ],
       "credentials": {
         "agentCoreApi": {
