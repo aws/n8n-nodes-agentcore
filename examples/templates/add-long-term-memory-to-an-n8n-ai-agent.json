@@ -69,12 +69,16 @@
     },
     {
       "parameters": {
-        "options": {}
+        "options": {
+          "responseMode": "lastNode"
+        },
+        "public": false,
+        "mode": "hostedChat"
       },
       "id": "chat-trigger",
       "name": "When chat message received",
       "type": "@n8n/n8n-nodes-langchain.chatTrigger",
-      "typeVersion": 1.1,
+      "typeVersion": 1.4,
       "position": [
         0,
         423
