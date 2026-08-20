@@ -12,15 +12,18 @@ Listed on n8n at
 
 ## Why this node?
 
-n8n’s native AI Agent node is great for simple agents, but hits walls fast: no cross-session memory, no real browser, no real code execution, and short execution timeouts. AgentCore harness solves all four. This node is the bridge.
+n8n’s AI Agent node covers a lot of ground, and for many workflows it is all you need. AgentCore harness is for the cases where you want the agent loop, its execution environment and its memory managed for you: memory that persists across executions without you running a store for it, code and browser tools that execute inside an isolated microVM in your own AWS account, and long-running sessions. This node is the bridge.
 
-|Capability    |Native n8n AI Agent|AgentCore Agent (this node)               |
-|--------------|-------------------|------------------------------------------|
-|Memory        |Per-execution only |Cross-session, semantic, summary, episodic|
-|Code execution|Sandboxed JS only  |Full microVM with Python/Node/etc.        |
-|Browser       |None               |Cloud browser with real navigation        |
-|Session length|Workflow timeout   |Up to 8 hours per session                 |
-|Isolation     |Shared process     |Firecracker microVM per session           |
+|Capability    |n8n AI Agent, built in                          |AgentCore Agent (this node)               |
+|--------------|------------------------------------------------|------------------------------------------|
+|Memory        |Simple Memory in process; Postgres, Redis and other stores available as sub-nodes you operate|Managed store provisioned for you, scoped per actor, with semantic, summary and user-preference strategies|
+|Code execution|Code node runs JS or Python in the n8n process  |Python, Node and shell inside an isolated microVM|
+|Browser       |Community nodes such as Puppeteer, self-operated |Managed cloud browser|
+|Session length|Bounded by your execution timeout               |Long-running sessions, up to 8 hours      |
+|Isolation     |Shared n8n process                              |Firecracker microVM per session           |
+
+The distinction is not what n8n can do, it is what you have to run and secure
+yourself to do it.
 
 ## Features
 
