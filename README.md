@@ -19,8 +19,8 @@ n8n’s AI Agent node covers a lot of ground, and for many workflows it is all y
 |Memory        |Simple Memory in process; Postgres, Redis and other stores available as sub-nodes you operate|Managed store provisioned for you, scoped per actor, with semantic, summary and user-preference strategies|
 |Code execution|Code node runs JS or Python in the n8n process  |Python, Node and shell inside an isolated microVM|
 |Browser       |Community nodes such as Puppeteer, self-operated |Managed cloud browser|
-|Session length|Bounded by your execution timeout               |Long-running sessions, up to 8 hours      |
-|Isolation     |Shared n8n process                              |Firecracker microVM per session           |
+|Session length|Bounded by your execution timeout               |Long-running sessions, with a per-invocation timeout you set|
+|Isolation     |Shared n8n process                              |Isolated microVM per session              |
 
 The distinction is not what n8n can do, it is what you have to run and secure
 yourself to do it.
@@ -36,7 +36,7 @@ yourself to do it.
 - **VPC, custom containers, and filesystem mounts** (v0.2) — run in your VPC, bring a linux/arm64 ECR image, mount session storage / EFS / S3 Files
 - **OAuth Bearer invoke** (v0.2) — invoke inbound-OAuth harnesses with a JWT stored on the AgentCore API credential
 - **Versions & endpoints** (v0.2) — list immutable versions, pin named endpoints, invoke by qualifier
-- **Streaming responses** with structured tool-use trace, token usage, and latency metadata
+- **Structured responses** — tool-use trace, stop reason, token usage, and latency metadata on every invocation (the node consumes the AgentCore event stream and returns the completed result; it does not yet forward partial output to n8n's streaming UI)
 - **Session persistence** — pass the same session ID across executions for multi-turn conversations
 - **Execution limits** — max iterations, max tokens, timeout
 
@@ -472,10 +472,10 @@ zero runtime dependencies, and **is verified**. It is listed at
 
 |Version           |Capability                                                                                       |
 |------------------|-------------------------------------------------------------------------------------------------|
-|**v0.1**          |Run Agent, Invoke Existing, MCP / Browser / Code Interpreter / Gateway tools, streaming, sessions|
+|**v0.1**          |Run Agent, Invoke Existing, MCP / Browser / Code Interpreter / Gateway tools, sessions|
 |**v0.2**          |Multi-provider models, managed memory, VPC, custom containers, filesystem mounts, skills, inline functions, versions & endpoints|
 |**v0.4** (current)|OAuth Bearer Token moved to the credential, Add Tools / Add Skills toggles, AWS calls through n8n's HTTP helper, node `typeVersion` 2|
-|**later**         |ExecuteCommand (shell) with Bearer, custom Browser/Code Interpreter resources, CloudFormation quick-create, Export to Code, Step Functions|
+|**later**         |Streaming partial output to n8n's streaming UI, ExecuteCommand (shell) with Bearer, custom Browser/Code Interpreter resources, CloudFormation quick-create, Export to Code, Step Functions|
 
 ## Limitations (v0.2)
 

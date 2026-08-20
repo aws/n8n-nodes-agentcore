@@ -117,6 +117,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **npm package description** now says the node is verified, and `verified` was
   added to `keywords`. npm always publishes `README.md` regardless of the `files`
   field, so this release is what surfaces the verified status on the npm page.
+- **Three capability claims corrected in the README comparison table and feature
+  list.** All three described behaviour the node does not have. (1) "Session length:
+  up to 8 hours" cited a limit that belongs to other resources: `maxLifetime` on
+  `LifecycleConfiguration` is the AgentCore *Runtime* instance lifetime, and the
+  28800-second ceiling on `SessionConfiguration.sessionTimeoutInSeconds` is for MCP
+  *Gateway* sessions. The only duration this node sends is the per-invocation
+  `timeoutSeconds` (default 600), so no user could reach eight hours through it.
+  (2) "Streaming responses" was listed as a shipped feature, but `consumeStream()`
+  accumulates the event stream and returns a completed result; the node never calls
+  n8n's `sendChunk`, so nothing streams to the UI. Renamed to "Structured
+  responses", which is what it delivers, and moved streaming to the `later` roadmap
+  row. (3) "Firecracker microVM per session" named a hypervisor that AWS public
+  documentation does not, so the table and `docs/SPEC.md` now say "isolated microVM"
+  as the AgentCore docs do. Follows the same class of error as the AI Agent
+  comparison corrected in the previous entry.
 
 ## [0.4.0] - 2026-07-27
 
