@@ -14,7 +14,7 @@
 
 `@aws/n8n-nodes-agentcore` is an n8n community node that integrates Amazon Bedrock AgentCore harness into n8n workflows. It lets workflow developers run production-grade AI agents — with cross-session memory, real cloud browser, real microVM code execution, multi-provider model choice, skills, and long-running sessions — without writing infrastructure code or agent code.
 
-The node auto-provisions a harness on first execution, reuses it on subsequent runs, and updates it when configuration drifts. AWS credentials are read from n8n’s encrypted credential vault per execution, never persisted. All risky execution (model inference, browser, code interpreter) happens inside AWS-managed Firecracker microVMs, not inside the n8n process.
+The node auto-provisions a harness on first execution, reuses it on subsequent runs, and updates it when configuration drifts. AWS credentials are read from n8n’s encrypted credential vault per execution, never persisted. All risky execution (model inference, browser, code interpreter) happens inside AWS-managed isolated microVMs, not inside the n8n process.
 
 ## 2. Goals and non-goals
 
@@ -86,7 +86,7 @@ Three audiences, in priority order:
 │  │ - ListHarnesses      │                   ▼                   │
 │  │ - DeleteHarness      │     ┌─────────────────────────────┐   │
 │  └──────────┬───────────┘     │  Harness microVM            │   │
-│             │                 │  (Firecracker, isolated)    │   │
+│             │                 │  (isolated per session)     │   │
 │             │ assumes         │                             │   │
 │             ▼                 │  - Bedrock model inference  │   │
 │  ┌──────────────────────┐     │  - Browser tool             │   │
