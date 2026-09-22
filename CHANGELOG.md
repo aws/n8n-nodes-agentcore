@@ -38,6 +38,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The node now identifies itself on every AgentCore request.** Requests carry
+  `User-Agent: n8n-nodes-agentcore` and the same value in `x-amz-user-agent`, so
+  harness usage that originates in n8n is distinguishable from usage by the AWS SDK,
+  the AgentCore CLI, or the console. This package is SDK-free, so before this change
+  its traffic was indistinguishable from any other hand-rolled SigV4 caller and
+  arrived carrying only the HTTP layer's own default agent. The value is a fixed
+  string: no additional request is made, no third party is contacted, and no
+  workflow, prompt, credential, or end-user data is included. Both headers are added
+  after signing and stay out of the SigV4 signed header set, matching the AWS SDK,
+  which lists `user-agent` in `ALWAYS_UNSIGNABLE_HEADERS`. Covered by
+  `test/userAgent.test.ts`.
 - **`examples/templates/build-a-multi-agent-support-team-with-shared-customer-memory.json`**
   — a triage agent routes each question to one of three specialists. All four run
   on one harness with tools granted per invocation, and share one memory per
