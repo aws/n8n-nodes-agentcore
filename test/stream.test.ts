@@ -30,6 +30,25 @@ describe('consumeStream', () => {
 		expect(result.latencyMs).toBe(1234);
 	});
 
+	it('sums usage and latency across the metadata event of every model call', async () => {
+		// Recorded from a live run: one tool call means two model calls, each
+		// followed by its own metadata event.
+		const result = await consumeStream(
+			gen([
+				{ contentBlockStart: { contentBlockIndex: 0, start: { toolUse: { name: 'list_sailings', toolUseId: 'tu_1' } } } },
+				{ contentBlockStop: { contentBlockIndex: 0 } },
+				{ messageStop: { stopReason: 'tool_use' } },
+				{ metadata: { usage: { inputTokens: 1720, outputTokens: 34 }, metrics: { latencyMs: 646 } } },
+				{ messageStop: { stopReason: 'tool_result' } },
+				{ contentBlockDelta: { contentBlockIndex: 0, delta: { text: 'No sailings found.' } } },
+				{ messageStop: { stopReason: 'end_turn' } },
+				{ metadata: { usage: { inputTokens: 1789, outputTokens: 12 }, metrics: { latencyMs: 589 } } },
+			]),
+		);
+		expect(result.usage).toEqual({ inputTokens: 3509, outputTokens: 46 });
+		expect(result.latencyMs).toBe(1235);
+	});
+
 	it('reconstructs a tool use with streamed JSON input fragments', async () => {
 		const result = await consumeStream(
 			gen([

@@ -8,6 +8,8 @@
  *   contentBlockDelta -> { contentBlockIndex, delta: { text } | { toolUse: { input } } }
  *   messageStop       -> { stopReason: string }
  *   metadata          -> { usage: { inputTokens, outputTokens }, metrics: { latencyMs } }
+ *                        (one per model call: a run with tool use emits several,
+ *                        so usage and latency are summed across them)
  *   internalServerException / validationException / runtimeClientError -> error envelope
  *
  * Tool-use input arrives as a stream of partial-JSON string fragments in
@@ -75,12 +77,12 @@ export async function consumeStream(stream: AsyncIterable<any>): Promise<InvokeR
 			const meta = event.metadata;
 			if (meta.usage) {
 				result.usage = {
-					inputTokens: meta.usage.inputTokens,
-					outputTokens: meta.usage.outputTokens,
+					inputTokens: (result.usage?.inputTokens ?? 0) + (meta.usage.inputTokens ?? 0),
+					outputTokens: (result.usage?.outputTokens ?? 0) + (meta.usage.outputTokens ?? 0),
 				};
 			}
 			if (meta.metrics?.latencyMs !== undefined) {
-				result.latencyMs = meta.metrics.latencyMs;
+				result.latencyMs = (result.latencyMs ?? 0) + meta.metrics.latencyMs;
 			}
 		} else if (event.internalServerException) {
 			throw new Error(
