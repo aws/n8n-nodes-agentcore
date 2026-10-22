@@ -5,6 +5,7 @@
 import type { IDataObject } from 'n8n-workflow';
 import { consumeStream, type InvokeResult } from './stream';
 import { decodeEventStream, type ByteStream } from './eventstream';
+import { withUserAgent } from './userAgent';
 import type { HttpRequestFn } from './httpClient';
 
 /**
@@ -58,7 +59,7 @@ export async function invokeWithBearer(input: OAuthInvokeInput): Promise<InvokeR
 	const response = await input.httpRequest({
 		method: 'POST',
 		url,
-		headers,
+		headers: withUserAgent(headers),
 		body: JSON.stringify(input.body),
 		encoding: 'stream',
 		returnFullResponse: true,

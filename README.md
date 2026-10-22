@@ -192,6 +192,18 @@ For a harness deployed outside n8n (CLI, console, CloudFormation, Terraform). Th
 When versioning/endpoint actions are enabled, the output also carries
 `versions` and/or `endpoint` (+ `endpoints`).
 
+### Client identification
+
+Every request the node makes to AgentCore carries `User-Agent: n8n-nodes-agentcore`,
+and the same value in `x-amz-user-agent`. This lets AgentCore usage that comes from
+n8n be told apart from usage by the AWS SDK, the AgentCore CLI, or the console, which
+is otherwise impossible because this package is SDK-free and so sends none of the
+SDK's own identification.
+
+It is a fixed string on requests your workflow already makes to your own AWS account.
+The node makes no additional request, contacts no third party, and sends no workflow,
+prompt, credential, or end-user data in these headers.
+
 ## v0.2 capabilities
 
 ### Models
