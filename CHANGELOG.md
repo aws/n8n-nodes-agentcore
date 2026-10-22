@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`usage` and `latencyMs` reported only the last model call.** The harness emits one
+  `metadata` event per model call, so a run that uses tools emits several, and each
+  one overwrote the previous. A run with a single tool call reported 1,789 input / 12
+  output tokens instead of the 3,509 / 46 it consumed. Usage and latency are now summed
+  across every `metadata` event in the stream. Covered by `test/stream.test.ts`.
 - **A harness stayed in its VPC after the credential was switched back to Public.**
   `UpdateHarness` treats an omitted field as "keep the stored value", and the update
   payload omitted `environment` whenever nothing was configured, so a harness created
