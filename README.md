@@ -194,8 +194,9 @@ When versioning/endpoint actions are enabled, the output also carries
 
 ### Client identification
 
-Every request the node makes to AgentCore carries `User-Agent: n8n-nodes-agentcore`,
-and the same value in `x-amz-user-agent`. This lets AgentCore usage that comes from
+Every request the node makes to AgentCore, including the credential's Test request,
+carries `User-Agent: n8n-nodes-agentcore` and the same value in `x-amz-user-agent`.
+This lets AgentCore usage that comes from
 n8n be told apart from usage by the AWS SDK, the AgentCore CLI, or the console, which
 is otherwise impossible because this package is SDK-free and so sends none of the
 SDK's own identification.

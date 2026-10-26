@@ -45,9 +45,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   its traffic was indistinguishable from any other hand-rolled SigV4 caller and
   arrived carrying only the HTTP layer's own default agent. The value is a fixed
   string: no additional request is made, no third party is contacted, and no
-  workflow, prompt, credential, or end-user data is included. Both headers are added
-  after signing and stay out of the SigV4 signed header set, matching the AWS SDK,
-  which lists `user-agent` in `ALWAYS_UNSIGNABLE_HEADERS`. Covered by
+  workflow, prompt, credential, or end-user data is included. Signing matches the
+  AWS SDK: `x-amz-user-agent` is part of the SigV4 signed header set, and
+  `User-Agent` is added after signing because the SDK lists it in
+  `ALWAYS_UNSIGNABLE_HEADERS`. This covers all four request paths: control plane,
+  SigV4 invoke, OAuth Bearer invoke, and the credential's Test request. Covered by
   `test/userAgent.test.ts`.
 - **`examples/templates/build-a-multi-agent-support-team-with-shared-customer-memory.json`**
   — a triage agent routes each question to one of three specialists. All four run

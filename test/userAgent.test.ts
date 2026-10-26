@@ -3,7 +3,11 @@
  * SPDX-License-Identifier: MIT
  */
 import { describe, it, expect, vi } from 'vitest';
-import { USER_AGENT, withUserAgent } from '../nodes/AgentCoreHarness/helpers/userAgent';
+import {
+	USER_AGENT,
+	withAmzUserAgent,
+	withUserAgent,
+} from '../nodes/AgentCoreHarness/helpers/userAgent';
 import {
 	controlRequest,
 	invokeHarnessStream,
@@ -11,17 +15,19 @@ import {
 	type HttpRequestFn,
 } from '../nodes/AgentCoreHarness/helpers/httpClient';
 import { invokeWithBearer } from '../nodes/AgentCoreHarness/helpers/oauth';
+import { AgentCoreApi } from '../credentials/AgentCoreApi.credentials';
 
 /**
  * The node identifies itself on every AgentCore request so that harness usage
  * originating in n8n can be told apart from usage by the AWS SDK, the CLI, or
  * the console. These tests pin three things that are easy to regress:
  *
- *  1. both headers are present on all three request paths (control plane,
- *     SigV4 invoke, and Bearer invoke),
+ *  1. both headers are present on all four request paths (control plane,
+ *     SigV4 invoke, Bearer invoke, and the credential Test request),
  *  2. the token is a fixed string carrying no workflow or user data, and
- *  3. `user-agent` is NOT part of the SigV4 signed header set, matching the AWS
- *     SDK, which lists it in `ALWAYS_UNSIGNABLE_HEADERS`.
+ *  3. on SigV4 paths the signing matches the AWS SDK: `x-amz-user-agent` IS in
+ *     the signed header set, and `user-agent` is NOT (the SDK lists it in
+ *     `ALWAYS_UNSIGNABLE_HEADERS`).
  */
 
 function mockHttp(impl: (options: any) => any): {
@@ -51,20 +57,20 @@ function signedHeaders(authorization: string): string[] {
 	return match[1].split(';');
 }
 
-describe('withUserAgent', () => {
-	it('adds both identification headers', () => {
-		expect(withUserAgent({})).toEqual({
-			'User-Agent': USER_AGENT,
-			'x-amz-user-agent': USER_AGENT,
-		});
+describe('user-agent header helpers', () => {
+	it('withAmzUserAgent adds only x-amz-user-agent (the signed header)', () => {
+		expect(withAmzUserAgent({})).toEqual({ 'x-amz-user-agent': USER_AGENT });
+	});
+
+	it('withUserAgent adds only User-Agent (the unsigned header)', () => {
+		expect(withUserAgent({})).toEqual({ 'User-Agent': USER_AGENT });
 	});
 
 	it('preserves existing headers and does not mutate the input', () => {
 		const input = { 'content-type': 'application/json', Authorization: 'AWS4-HMAC-SHA256 ...' };
-		const out = withUserAgent(input);
+		const out = withUserAgent(withAmzUserAgent(input));
 		expect(out['content-type']).toBe('application/json');
 		expect(out['Authorization']).toBe('AWS4-HMAC-SHA256 ...');
-		// The signed headers object handed to us must come back unchanged.
 		expect(input).toEqual({
 			'content-type': 'application/json',
 			Authorization: 'AWS4-HMAC-SHA256 ...',
@@ -87,12 +93,12 @@ describe('user-agent on the control plane', () => {
 		expect(sent().headers['x-amz-user-agent']).toBe(USER_AGENT);
 	});
 
-	it('leaves user-agent out of the SigV4 signed header set', async () => {
+	it('signs x-amz-user-agent and leaves user-agent unsigned, matching the AWS SDK', async () => {
 		const { httpRequest, sent } = mockHttp(() => ({ body: '{}', statusCode: 200 }));
 		await controlRequest(configWith(httpRequest), { method: 'GET', path: '/harnesses/h1' });
 		const signed = signedHeaders(sent().headers['Authorization']);
+		expect(signed).toContain('x-amz-user-agent');
 		expect(signed).not.toContain('user-agent');
-		expect(signed).not.toContain('x-amz-user-agent');
 		// Sanity: the headers that should be signed still are.
 		expect(signed).toContain('host');
 		expect(signed).toContain('x-amz-date');
@@ -125,7 +131,9 @@ describe('user-agent on the data plane', () => {
 		expect(sent().headers['x-amz-user-agent']).toBe(USER_AGENT);
 		// The session-id header and the signature are untouched.
 		expect(sent().headers['X-Amzn-Bedrock-AgentCore-Runtime-Session-Id']).toBe('a'.repeat(40));
-		expect(sent().headers['Authorization']).toContain('AWS4-HMAC-SHA256');
+		const signed = signedHeaders(sent().headers['Authorization']);
+		expect(signed).toContain('x-amz-user-agent');
+		expect(signed).not.toContain('user-agent');
 	});
 
 	it('sends both identification headers on the Bearer invoke path', async () => {
@@ -150,5 +158,27 @@ describe('user-agent on the data plane', () => {
 		expect(sent().headers['x-amz-user-agent']).toBe(USER_AGENT);
 		// Bearer auth is not disturbed by the added headers.
 		expect(sent().headers['Authorization']).toBe('Bearer jwt-token');
+	});
+});
+
+describe('user-agent on the credential Test request', () => {
+	// n8n runs the credential's `test` request through `authenticate()` when the
+	// user clicks Test, which is a fourth request path independent of the node.
+	it('sends both headers, with x-amz-user-agent signed and user-agent not', async () => {
+		const credential = new AgentCoreApi();
+		const out = await credential.authenticate(
+			{ accessKeyId: 'AKID', secretAccessKey: 'secret', region: 'us-west-2' },
+			{
+				baseURL: 'https://bedrock-agentcore-control.us-west-2.amazonaws.com',
+				url: '/harnesses?maxResults=1',
+				method: 'GET',
+			},
+		);
+		const headers = out.headers as Record<string, string>;
+		expect(headers['User-Agent']).toBe(USER_AGENT);
+		expect(headers['x-amz-user-agent']).toBe(USER_AGENT);
+		const signed = signedHeaders(headers['Authorization']);
+		expect(signed).toContain('x-amz-user-agent');
+		expect(signed).not.toContain('user-agent');
 	});
 });

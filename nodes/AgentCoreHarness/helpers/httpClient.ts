@@ -25,7 +25,7 @@
 import { randomUUID } from 'node:crypto';
 import { sleep, type IHttpRequestOptions } from 'n8n-workflow';
 import { signRequest, type SigV4Credentials } from './sigv4';
-import { withUserAgent } from './userAgent';
+import { withAmzUserAgent, withUserAgent } from './userAgent';
 import type { ByteStream } from './eventstream';
 
 const SERVICE = 'bedrock-agentcore';
@@ -136,14 +136,14 @@ interface SignedSend {
 async function sendWithRetry(config: AwsCallerConfig, send: SignedSend): Promise<HttpFullResponse> {
 	let lastError: unknown;
 	for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-		// The user-agent headers are added after signing, so they stay out of the
-		// signed header set, the same treatment the AWS SDK gives `user-agent`.
+		// `x-amz-user-agent` is signed; `User-Agent` is added after signing so it
+		// stays out of the signed header set. Both match the AWS SDK.
 		const headers = withUserAgent(
 			signRequest(
 				{
 					method: send.method,
 					url: send.url,
-					headers: { 'content-type': 'application/json' },
+					headers: withAmzUserAgent({ 'content-type': 'application/json' }),
 					body: send.bodyString,
 				},
 				{ region: config.region, service: SERVICE, credentials: config.credentials },
@@ -238,7 +238,7 @@ export async function invokeHarnessStream(
 
 	const headers = withUserAgent(
 		signRequest(
-			{ method: 'POST', url, headers: baseHeaders, body: bodyString },
+			{ method: 'POST', url, headers: withAmzUserAgent(baseHeaders), body: bodyString },
 			{ region: config.region, service: SERVICE, credentials: config.credentials },
 		),
 	);
