@@ -10,6 +10,7 @@ import type {
 	INodeProperties,
 } from 'n8n-workflow';
 import { signRequest } from '../nodes/AgentCoreHarness/helpers/sigv4';
+import { withAmzUserAgent, withUserAgent } from '../nodes/AgentCoreHarness/helpers/userAgent';
 
 export class AgentCoreApi implements ICredentialType {
 	name = 'agentCoreApi';
@@ -159,10 +160,10 @@ export class AgentCoreApi implements ICredentialType {
 			{
 				method: (requestOptions.method as string) || 'GET',
 				url,
-				headers: {
+				headers: withAmzUserAgent({
 					'content-type': 'application/json',
 					...((requestOptions.headers as Record<string, string>) || {}),
-				},
+				}),
 				body,
 			},
 			{
@@ -176,7 +177,12 @@ export class AgentCoreApi implements ICredentialType {
 			},
 		);
 
-		requestOptions.headers = { ...(requestOptions.headers || {}), ...signedHeaders };
+		// Same client identification as the node: `x-amz-user-agent` was signed
+		// above, `User-Agent` is added after signing (see helpers/userAgent.ts).
+		requestOptions.headers = withUserAgent({
+			...((requestOptions.headers as Record<string, string>) || {}),
+			...signedHeaders,
+		});
 		// Send the exact bytes we signed. SigV4 binds a hash of the request body
 		// into the signature, so the wire body must match the string we hashed
 		// above — if we left an object here, the HTTP layer could re-serialize it
