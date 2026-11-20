@@ -80,12 +80,15 @@ export const toolsField: INodeProperties = {
 						'Tool name. Optional for managed tools. For an inline function this is the function name the model calls, 1 to 64 characters of letters, numbers, underscores, and hyphens.',
 				},
 				{
-					displayName: 'OAuth Credential Provider Name',
-					name: 'oauthProviderName',
+					displayName: 'OAuth Credential Provider ARN',
+					name: 'oauthProviderArn',
 					type: 'string',
 					default: '',
+					placeholder:
+						'arn:aws:bedrock-agentcore:us-west-2:123456789012:token-vault/default/oauth2credentialprovider/my-provider',
 					displayOptions: { show: { type: ['agentcore_gateway'], outboundAuth: ['oauth'] } },
-					description: 'Name of the AgentCore Identity OAuth credential provider',
+					description:
+						'ARN of the AgentCore Identity OAuth2 credential provider the harness uses for outbound calls through the Gateway',
 				},
 				{
 					displayName: 'OAuth Scopes',
@@ -94,7 +97,7 @@ export const toolsField: INodeProperties = {
 					default: '',
 					placeholder: 'read,write',
 					displayOptions: { show: { type: ['agentcore_gateway'], outboundAuth: ['oauth'] } },
-					description: 'Comma-separated OAuth scopes',
+					description: 'Comma-separated OAuth scopes. At least one scope is required.',
 				},
 				{
 					displayName: 'Outbound Auth',

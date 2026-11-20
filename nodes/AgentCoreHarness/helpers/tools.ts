@@ -22,11 +22,10 @@ export interface ToolConfig {
  *   - remote_mcp
  *   - inline_function          (client-side execution; round-trips via toolResult)
  *
- * Note: `agentcore_web_search` is described in the developer guide but is not yet
- * accepted by the Create/Update/Invoke Harness APIs (the service enum rejects it
- * with a ValidationException), so it is intentionally not offered here. Web
- * search can still be added today via a Remote MCP search server. Re-add the
- * managed type once the harness API enum includes it.
+ * Web search is not a separate tool type. AgentCore delivers it as the Web
+ * Search (or Web Answer) connector behind an AgentCore Gateway, attached to the
+ * harness as an `agentcore_gateway` tool with the default AWS IAM outbound auth.
+ * There is no `agentcore_web_search` type in the harness API.
  */
 export function buildToolsArray(toolsUi: IDataObject | undefined): ToolConfig[] {
 	if (!toolsUi || !toolsUi.tool) {
@@ -125,16 +124,35 @@ function buildGatewayOutboundAuth(uiTool: IDataObject): IDataObject | undefined 
 		case 'none':
 			return { none: {} };
 		case 'oauth': {
-			const providerName = (uiTool.oauthProviderName as string) || '';
-			if (!providerName) {
+			// `oauth` is an OAuthCredentialProvider directly: `providerArn` and `scopes`
+			// are both required. Releases before 0.4.6 sent
+			// `{ oauthCredentialProvider: { credentialProviderName } }`, which the
+			// service rejects, and asked for a provider name in `oauthProviderName`.
+			// That legacy field is still read so a saved ARN keeps working, but a
+			// saved name gets an error that explains the change.
+			const providerArn = (
+				(uiTool.oauthProviderArn as string) ||
+				(uiTool.oauthProviderName as string) ||
+				''
+			).trim();
+			if (!providerArn) {
 				throw new ApplicationError(
-					'Gateway OAuth outbound auth requires a Credential Provider Name.',
+					'Gateway OAuth outbound auth requires an OAuth Credential Provider ARN.',
 				);
 			}
-			const oauthCredentialProvider: IDataObject = { credentialProviderName: providerName };
+			if (!OAUTH_PROVIDER_ARN.test(providerArn)) {
+				throw new ApplicationError(
+					`Gateway OAuth outbound auth needs the credential provider ARN, not its name: "${providerArn}". ` +
+						'Expected arn:aws:bedrock-agentcore:<region>:<account-id>:token-vault/<vault>/oauth2credentialprovider/<name>.',
+				);
+			}
 			const scopes = splitScopes(uiTool.oauthScopes as string);
-			if (scopes.length > 0) oauthCredentialProvider.scopes = scopes;
-			return { oauth: { oauthCredentialProvider } };
+			if (scopes.length === 0) {
+				throw new ApplicationError(
+					'Gateway OAuth outbound auth requires at least one OAuth scope.',
+				);
+			}
+			return { oauth: { providerArn, scopes } };
 		}
 		case 'awsIam':
 		default:
@@ -142,6 +160,10 @@ function buildGatewayOutboundAuth(uiTool: IDataObject): IDataObject | undefined 
 			return undefined;
 	}
 }
+
+/** AgentCore Identity OAuth2 credential provider ARN, any partition. */
+const OAUTH_PROVIDER_ARN =
+	/^arn:aws[a-z-]*:bedrock-agentcore:[a-z0-9-]+:\d{12}:token-vault\/[^/]+\/oauth2credentialprovider\/[^/]+$/;
 
 function splitScopes(raw: string | undefined): string[] {
 	if (!raw) return [];

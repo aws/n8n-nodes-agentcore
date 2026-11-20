@@ -9,6 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Gateway tools with OAuth outbound auth failed on every invocation** (#111). The
+  node sent `outboundAuth.oauth.oauthCredentialProvider.credentialProviderName`, but
+  `oauth` is an `OAuthCredentialProvider` with a required `providerArn` and required
+  `scopes`, so the service rejected the request with `providerArn must not be null`.
+  The Gateway tool now asks for the **OAuth Credential Provider ARN** and at least one
+  scope, and sends `{ oauth: { providerArn, scopes } }`. A provider ARN saved in the
+  old name field is still read; a saved name gets an error explaining that the ARN is
+  needed. Verified against the live service. Covered by `test/tools.test.ts`.
+- **OpenAI could be sent an invalid API Format.** The API Format option defaults to
+  Bedrock's `converse_stream`, which was passed through for OpenAI, where only
+  `responses` and `chat_completions` are valid. It is no longer sent for OpenAI, so
+  the service default (`responses`) applies. Covered by `test/model.test.ts`.
+- **API Base URL now works for OpenAI.** `openAiModelConfig.apiBase` routes a direct
+  OpenAI call through an OpenAI-compatible gateway or proxy. The field was labelled
+  "LiteLLM only" and dropped for OpenAI.
+- **Docs corrected against the current AgentCore harness documentation.** First-run
+  provisioning takes a few minutes (measured at about 4 minutes in us-west-2, with or
+  without managed memory), not ~30 seconds. Web search is a Gateway connector
+  attached as a Gateway tool, not a pending `agentcore_web_search` type. The Tool
+  Results help no longer says the tool-use message must be rebuilt, since the
+  harness resumes from session state. `examples/07` now checks `stopReason` before
+  running the inline function, because a lifecycle hook can deny a tool request that
+  already appeared in `toolUses`.
 - **`usage` and `latencyMs` reported only the last model call.** The harness emits one
   `metadata` event per model call, so a run that uses tools emits several, and each
   one overwrote the previous. A run with a single tool call reported 1,789 input / 12

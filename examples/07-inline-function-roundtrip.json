@@ -49,7 +49,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// In a real workflow you'd call a weather API here using\n// $json.toolUses[0].input.city. We hard-code a result for the demo.\nreturn [{ json: { ...$json, computedWeather: '52F, light rain' } }];"
+        "jsCode": "// Only run the inline function when the agent actually handed the call off.\n// With lifecycle hooks, a tool request can appear in toolUses and then be\n// denied, in which case stopReason is not \"tool_use\".\nif ($json.stopReason !== 'tool_use' || !$json.toolUses?.length) {\n  throw new Error(`Agent did not hand off a tool call (stopReason: ${$json.stopReason})`);\n}\n// In a real workflow you'd call a weather API here using\n// $json.toolUses[0].input.city. We hard-code a result for the demo.\nreturn [{ json: { ...$json, computedWeather: '52F, light rain' } }];"
       },
       "id": "3",
       "name": "Compute Tool Result",

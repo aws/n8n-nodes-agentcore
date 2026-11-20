@@ -8,10 +8,10 @@ import { ApplicationError, type IDataObject } from 'n8n-workflow';
  * Builds the `model` union (HarnessModelConfiguration) for CreateHarness,
  * UpdateHarness, and InvokeHarness from the node's model fields.
  *
- * The union has exactly four members (verified against the installed SDK
- * type definitions, @aws-sdk/client-bedrock-agentcore-control@3.1071.0):
+ * The union has exactly four members (verified against the SDK type
+ * definitions, @aws-sdk/client-bedrock-agentcore-control@3.1173.0):
  *   - bedrockModelConfig  { modelId, apiFormat?, maxTokens?, temperature?, topP?, additionalParams? }
- *   - openAiModelConfig   { modelId, apiKeyArn, apiFormat?, maxTokens?, temperature?, topP?, additionalParams? }
+ *   - openAiModelConfig   { modelId, apiKeyArn, apiBase?, apiFormat? (responses|chat_completions), maxTokens?, temperature?, topP?, additionalParams? }
  *   - geminiModelConfig   { modelId, apiKeyArn, maxTokens?, temperature?, topP?, topK? }
  *   - liteLlmModelConfig  { modelId, apiKeyArn?, apiBase?, maxTokens?, temperature?, topP?, additionalParams? }
  *
@@ -19,11 +19,11 @@ import { ApplicationError, type IDataObject } from 'n8n-workflow';
  * field entirely (invoke mode: harness default applies; run mode: caller
  * substitutes its own default before calling this).
  *
- * TODO(v0.2-question-1): The "OpenAI via Bedrock Mantle, no API key" path is
- * NOT expressed through openAiModelConfig — the SDK's openAiModelConfig requires
- * apiKeyArn and has no `endpoint`/`bedrockMantle` member. The no-key Mantle path
- * is reached via bedrockModelConfig + apiFormat=responses|chat_completions with
- * a Mantle model id. See docs/v0.2-questions.md.
+ * The "OpenAI via Bedrock Mantle, no API key" path is NOT expressed through
+ * openAiModelConfig, which always requires apiKeyArn. The no-key Mantle path is
+ * reached via bedrockModelConfig + apiFormat=responses|chat_completions with a
+ * Mantle model id. `openAiModelConfig.apiBase` only redirects a direct OpenAI
+ * call (with its key) to an OpenAI-compatible gateway or proxy.
  */
 
 export type ModelProvider = 'bedrock' | 'openai' | 'gemini' | 'litellm';
@@ -57,7 +57,11 @@ export function buildModelConfig(input: ModelInput): IDataObject | undefined {
 				);
 			}
 			const cfg: IDataObject = { modelId, apiKeyArn };
-			if (apiFormat) cfg.apiFormat = apiFormat;
+			// OpenAI accepts only `responses` (service default) or `chat_completions`.
+			// The UI option defaults to Bedrock's `converse_stream`, so adding the
+			// option without changing it must not send a value OpenAI rejects.
+			if (apiFormat && apiFormat !== 'converse_stream') cfg.apiFormat = apiFormat;
+			if (apiBase) cfg.apiBase = apiBase;
 			if (modelMaxTokens !== undefined) cfg.maxTokens = modelMaxTokens;
 			if (temperature !== undefined) cfg.temperature = temperature;
 			if (topP !== undefined) cfg.topP = topP;

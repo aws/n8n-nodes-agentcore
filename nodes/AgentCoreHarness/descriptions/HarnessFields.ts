@@ -100,7 +100,7 @@ export const harnessFields: INodeProperties[] = [
 				default: '',
 				placeholder: 'https://my-openai-proxy.example.com/v1',
 				description:
-					'LiteLLM only. Custom endpoint URL for an OpenAI-compatible gateway, proxy, or self-hosted endpoint.',
+					'OpenAI and LiteLLM only. Custom endpoint URL for an OpenAI-compatible gateway, proxy, or self-hosted endpoint. For OpenAI the harness sends the API key to this endpoint, so use only trusted endpoints.',
 			},
 			{
 				displayName: 'API Format',
@@ -113,7 +113,7 @@ export const harnessFields: INodeProperties[] = [
 					{ name: 'Chat Completions', value: 'chat_completions' },
 				],
 				description:
-					'Bedrock/OpenAI only. For Bedrock, Responses/Chat Completions route through the Bedrock Mantle endpoint (enables OpenAI-compatible and Mantle models with no API key). For OpenAI direct, choose Responses (default) or Chat Completions.',
+					'Bedrock/OpenAI only. For Bedrock, Responses/Chat Completions route through the Bedrock Mantle endpoint (enables OpenAI-compatible and Mantle models with no API key). For OpenAI direct, choose Responses (default) or Chat Completions; Converse Stream is Bedrock-only and is not sent for OpenAI.',
 			},
 			{
 				displayName: 'API Key ARN',
@@ -394,7 +394,7 @@ export const harnessFields: INodeProperties[] = [
 		typeOptions: { multipleValues: true },
 		default: {},
 		description:
-			'Results for inline-function tool calls returned by a previous invocation (stopReason "tool_use"). When set, the node sends the assistant tool-use message plus your tool result on the same session, and the agent resumes. Provide the Tool Use ID, function name, and original input from the prior output.',
+			'Results for inline-function tool calls returned by a previous invocation. Only send results when that invocation ended with stopReason "tool_use"; with lifecycle hooks a tool request can appear in toolUses and then be denied. Use the same Session ID: the harness resumes the pending call from session state using the Tool Use ID and your result.',
 		options: [
 			{
 				name: 'result',
@@ -407,7 +407,7 @@ export const harnessFields: INodeProperties[] = [
 						default: '',
 						placeholder: '={{	$json.toolUses[0	].input	}}',
 						description:
-							'The original input the model passed to the function (from the prior output). Required so the assistant tool-use message can be reconstructed.',
+							'Optional. The input the model passed to the function, from the prior output. The harness resumes from its own session state, so this is not needed to continue.',
 					},
 					{
 						displayName: 'Function Name',

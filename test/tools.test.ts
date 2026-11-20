@@ -5,6 +5,9 @@
 import { describe, it, expect } from 'vitest';
 import { buildToolsArray, configHash } from '../nodes/AgentCoreHarness/helpers/tools';
 
+const PROVIDER_ARN =
+	'arn:aws:bedrock-agentcore:us-west-2:123456789012:token-vault/default/oauth2credentialprovider/my-provider';
+
 describe('buildToolsArray', () => {
 	it('returns an empty array when no tools are configured', () => {
 		expect(buildToolsArray(undefined)).toEqual([]);
@@ -23,11 +26,19 @@ describe('buildToolsArray', () => {
 
 	it('builds a remote_mcp tool with url and parsed headers', () => {
 		const tools = buildToolsArray({
-			tool: [{ type: 'remote_mcp', url: 'https://mcp.example.com', headers: '{"Authorization":"Bearer x"}' }],
+			tool: [
+				{
+					type: 'remote_mcp',
+					url: 'https://mcp.example.com',
+					headers: '{"Authorization":"Bearer x"}',
+				},
+			],
 		});
 		expect(tools[0]).toMatchObject({
 			type: 'remote_mcp',
-			config: { remoteMcp: { url: 'https://mcp.example.com', headers: { Authorization: 'Bearer x' } } },
+			config: {
+				remoteMcp: { url: 'https://mcp.example.com', headers: { Authorization: 'Bearer x' } },
+			},
 		});
 	});
 
@@ -43,29 +54,79 @@ describe('buildToolsArray', () => {
 
 	it('builds a gateway tool and omits outboundAuth for the SigV4 default', () => {
 		const tools = buildToolsArray({
-			tool: [{ type: 'agentcore_gateway', gatewayArn: 'arn:aws:...:gateway/g', outboundAuth: 'awsIam' }],
+			tool: [
+				{ type: 'agentcore_gateway', gatewayArn: 'arn:aws:...:gateway/g', outboundAuth: 'awsIam' },
+			],
 		});
 		expect(tools[0].config).toEqual({ agentCoreGateway: { gatewayArn: 'arn:aws:...:gateway/g' } });
 	});
 
-	it('builds a gateway tool with OAuth outbound auth', () => {
+	it('builds gateway OAuth outbound auth as { providerArn, scopes }', () => {
 		const tools = buildToolsArray({
 			tool: [
 				{
 					type: 'agentcore_gateway',
 					gatewayArn: 'arn:g',
 					outboundAuth: 'oauth',
-					oauthProviderName: 'prov',
+					oauthProviderArn: PROVIDER_ARN,
 					oauthScopes: 'a, b',
+				},
+			],
+		});
+		// The service rejects the pre-0.4.6 `{ oauthCredentialProvider: { credentialProviderName } }`
+		// shape; `oauth` is an OAuthCredentialProvider with providerArn + scopes.
+		expect(tools[0].config).toEqual({
+			agentCoreGateway: {
+				gatewayArn: 'arn:g',
+				outboundAuth: { oauth: { providerArn: PROVIDER_ARN, scopes: ['a', 'b'] } },
+			},
+		});
+	});
+
+	it('accepts an ARN saved in the legacy oauthProviderName field', () => {
+		const tools = buildToolsArray({
+			tool: [
+				{
+					type: 'agentcore_gateway',
+					gatewayArn: 'arn:g',
+					outboundAuth: 'oauth',
+					oauthProviderName: PROVIDER_ARN,
+					oauthScopes: 'read',
 				},
 			],
 		});
 		expect(tools[0].config).toEqual({
 			agentCoreGateway: {
 				gatewayArn: 'arn:g',
-				outboundAuth: { oauth: { oauthCredentialProvider: { credentialProviderName: 'prov', scopes: ['a', 'b'] } } },
+				outboundAuth: { oauth: { providerArn: PROVIDER_ARN, scopes: ['read'] } },
 			},
 		});
+	});
+
+	it('rejects a provider name where the ARN is required', () => {
+		expect(() =>
+			buildToolsArray({
+				tool: [
+					{
+						type: 'agentcore_gateway',
+						gatewayArn: 'arn:g',
+						outboundAuth: 'oauth',
+						oauthProviderName: 'my-provider',
+						oauthScopes: 'read',
+					},
+				],
+			}),
+		).toThrow(/needs the credential provider ARN, not its name/);
+	});
+
+	it('requires a provider ARN and at least one scope for gateway OAuth', () => {
+		const base = { type: 'agentcore_gateway', gatewayArn: 'arn:g', outboundAuth: 'oauth' };
+		expect(() => buildToolsArray({ tool: [{ ...base, oauthScopes: 'read' }] })).toThrow(
+			/requires an OAuth Credential Provider ARN/,
+		);
+		expect(() => buildToolsArray({ tool: [{ ...base, oauthProviderArn: PROVIDER_ARN }] })).toThrow(
+			/at least one OAuth scope/,
+		);
 	});
 
 	it('throws when gateway is missing an ARN', () => {
@@ -118,8 +179,20 @@ describe('configHash', () => {
 	});
 
 	it('is order-independent for tools (sorted by name before hashing)', () => {
-		const a = configHash({ ...base, tools: [{ type: 't', name: 'a' }, { type: 't', name: 'b' }] });
-		const b = configHash({ ...base, tools: [{ type: 't', name: 'b' }, { type: 't', name: 'a' }] });
+		const a = configHash({
+			...base,
+			tools: [
+				{ type: 't', name: 'a' },
+				{ type: 't', name: 'b' },
+			],
+		});
+		const b = configHash({
+			...base,
+			tools: [
+				{ type: 't', name: 'b' },
+				{ type: 't', name: 'a' },
+			],
+		});
 		expect(a).toBe(b);
 	});
 

@@ -163,7 +163,7 @@ The node has a single operation. The **Harness ARN** field decides the mode.
 
 Type an Agent Name, set the system prompt and prompt, optionally turn on **Add Tools** to configure tools, and run. The node:
 
-- Creates the harness on first execution (~30 seconds), stores the ARN in workflow static data
+- Creates the harness on first execution (a few minutes, about 4 in our testing), stores the ARN in workflow static data
 - Reuses the same harness on subsequent runs (~3 seconds)
 - Updates the harness if you change the model, system prompt, tools, or limits
 - Streams the response back
@@ -250,9 +250,19 @@ to reveal the Skills section (both are hidden by default to keep the node
 compact). Tools now include **Gateway** with optional OAuth outbound auth and
 **Inline Functions**, alongside Browser, Code Interpreter, and remote MCP.
 **Skills** load domain knowledge on demand from the AWS catalog (glob patterns),
-Git, S3, or a filesystem path. (Need web search? Point a Remote MCP tool at a
-search MCP server — a managed `agentcore_web_search` type is documented by
-AgentCore but not yet accepted by the harness API.)
+Git, S3, or a filesystem path.
+
+**Gateway OAuth** needs the ARN of an AgentCore Identity OAuth2 credential
+provider (`...:token-vault/default/oauth2credentialprovider/<name>`) and at least
+one scope.
+
+**Web search** is not a separate tool type. Create an AgentCore Gateway with the
+Web Search connector as a target (`connectorId: "web-search"`), then add it here
+as a **Gateway** tool with the default AWS IAM outbound auth. Two roles are
+involved: the Gateway service role needs `bedrock-agentcore:InvokeWebSearch`, and
+the harness execution role needs `bedrock-agentcore:InvokeGateway` on the gateway.
+See [Web search](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/harness-tools.html#harness-web-search)
+for setup and Region availability.
 
 #### Inline-function round-trip
 
@@ -260,9 +270,15 @@ Add an **Inline Function** tool (name, description, JSON input schema). When the
 agent calls it, the invocation returns `stopReason: "tool_use"` and the output's
 `toolUses[]` carries the `toolUseId`, `name`, and parsed `input`. Compute the
 result in your workflow, then on a second node placement (same Session ID) fill
-the **Tool Results** field (Tool Use ID, function name, original input, result
-content). The node replays the assistant tool-use + your tool-result on the same
-session and the agent resumes. The Prompt may be blank on that second call.
+the **Tool Results** field (Tool Use ID, function name, result content). The
+harness resumes the pending call from its session state and the agent continues.
+The Prompt may be blank on that second call.
+
+Only act on a tool call when `stopReason` is `"tool_use"`. If the harness has
+lifecycle hooks, a tool request can show up in `toolUses` and then be denied by a
+hook, in which case the run ends with a different stop reason (such as
+`hook_stopped`). Gate the round-trip on `stopReason`, as
+`examples/07-inline-function-roundtrip.json` does.
 
 ### VPC, containers, filesystems
 
@@ -430,7 +446,7 @@ Open `http://localhost:5678`. The **Amazon Bedrock AgentCore** node should appea
 3. Attach the credential to the agent node
 4. Click **Execute Workflow**
 
-First run takes ~30 seconds (harness creation). Subsequent runs are instant.
+First run takes a few minutes (harness creation, about 4 minutes in our testing). Subsequent runs reuse the harness and return in seconds.
 
 ### Step 6 — Verify
 
@@ -498,8 +514,9 @@ zero runtime dependencies, and **is verified**. It is listed at
 - **OpenAI-via-Mantle without a key** uses the Bedrock provider with API Format
   `Responses`/`Chat Completions`; the SDK's `openAiModelConfig` requires an API
   key (Q1).
-- **First run is slow.** ~30 seconds for harness creation; managed memory adds a
-  little more. Subsequent runs are instant.
+- **First run is slow.** Harness creation takes a few minutes (about 4 minutes in
+  us-west-2 in November 2026, with or without managed memory); VPC mode can take
+  longer. Subsequent runs reuse the harness and return in seconds.
 - **Workflow static data** holds the harness ARN. Renaming an agent creates a new
   harness; the old one remains in your account until manually deleted.
 - **Inline functions are stateless across calls.** The tool-result round-trip is
@@ -511,7 +528,7 @@ zero runtime dependencies, and **is verified**. It is listed at
 |---|---|
 | **The agent doesn't remember previous turns** | The **Session ID** was left blank, so each run is a new conversation (output shows `sessionSource: "generated"`). Set a stable Session ID and reuse it across runs. See [Memory & sessions](#memory--sessions). |
 | **`AccessDenied` / `not authorized to perform` on the first run** | Either the **Bedrock model isn't enabled** (Bedrock console → Model access), or the **execution role is missing a scoped action** for the feature you used (e.g. `bedrock-mantle:CreateInference` for Mantle models, token-vault read for OpenAI/Gemini keys, `InvokeGateway` for gateways). See [IAM setup](#iam-setup). |
-| **First run hangs for ~30 seconds** | Expected — the node is creating the harness on first use. Subsequent runs reuse it and return in a few seconds. |
+| **First run takes several minutes** | Expected — the node is creating the harness on first use (about 4 minutes in our testing, longer in VPC mode). The node waits up to 10 minutes. Subsequent runs reuse it and return in a few seconds. |
 | **"Harness … did not reach READY within …" on a VPC harness** | VPC harness creation is slow (ENI provisioning in your subnets). The node now waits up to 10 minutes; if you still see this, the harness is often **still creating** — re-run the node shortly and it will find the now-READY harness and invoke it. A *persistent* failure (or `CREATE_FAILED`) usually means the managed container image could not be pulled: check that the **VPC endpoints** exist (`ecr.dkr` + `ecr.api` interface, `s3` gateway) and that the **execution role has private-ECR pull permissions** on `repository/harness-*`. See [IAM setup](#iam-setup). |
 | **OpenAI / Gemini model errors about a missing key** | Direct OpenAI/Gemini require an **API Key ARN** (a token-vault credential provider) in Model Options. To use OpenAI-style models without a key, pick the **Bedrock** provider with API Format `Responses`/`Chat Completions` and a Mantle model id. |
 | **Two "Amazon Bedrock AgentCore" nodes in the palette** | A leftover/older install. Remove the stale package from `~/.n8n/nodes` (or `~/.n8n/custom`), then fully restart n8n and open a fresh browser tab. |

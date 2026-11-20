@@ -59,8 +59,9 @@ function splitList(raw: string | undefined): string[] {
 
 /**
  * Polls GetHarness until READY or a terminal failure state.
- * Default timeout 600 seconds (10 min): public harnesses are ready in ~30s, but
- * VPC harnesses take materially longer — AWS provisions network interfaces in
+ * Default timeout 600 seconds (10 min): public harnesses took about 4 minutes to
+ * reach READY in us-west-2 (measured November 2026, with or without managed
+ * memory), and VPC harnesses take longer — AWS provisions network interfaces in
  * your subnets and pulls the managed container from a private ECR repository in
  * the same Region, which can exceed several minutes. A short timeout surfaced a
  * misleading "did not reach READY" error on VPC harnesses that were in fact

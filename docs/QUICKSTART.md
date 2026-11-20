@@ -63,8 +63,9 @@ Click **Test** → you should see **"Connection successful"**. Save.
 
 4. Click **Execute workflow** (or **Test step**).
 
-**First run takes ~30 seconds** — the node is creating the harness. Subsequent
-runs reuse it and return in a few seconds. That delay is expected, not a hang.
+**First run takes a few minutes** (about 4 in our testing) — the node is creating
+the harness. Subsequent runs reuse it and return in a few seconds. That delay is
+expected, not a hang.
 
 ## Step 4 — Read the output
 
