@@ -39,6 +39,7 @@ authoritative for the conventions below.
 │           ├── model.ts                      # buildModelConfig() multi-provider union
 │           ├── memory.ts                     # buildMemoryConfig()/Update() managed/BYO/disabled
 │           ├── environment.ts                # VPC network + filesystem mounts + container artifact
+│           ├── harnessOptions.ts             # allowedTools, truncation, tags
 │           ├── skills.ts                     # buildSkillsArray() aws/git/s3/path
 │           ├── versioning.ts                 # list versions, upsert named endpoint
 │           ├── oauth.ts                       # raw-HTTPS Bearer invoke + event-stream decode

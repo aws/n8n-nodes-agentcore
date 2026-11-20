@@ -29,6 +29,13 @@ import {
 	type FilesystemMount,
 } from './helpers/environment';
 import { buildSkillsArray } from './helpers/skills';
+import {
+	buildTruncation,
+	parseAllowedTools,
+	parseTags,
+	withHarnessOptions,
+	type HarnessOptions,
+} from './helpers/harnessOptions';
 import { invokeWithBearer } from './helpers/oauth';
 import {
 	listHarnessVersions,
@@ -82,6 +89,7 @@ interface ResolvedConfig {
 	maxIterations?: number;
 	maxTokens?: number;
 	timeoutSeconds?: number;
+	allowedTools?: string[];
 	actorId: string;
 	qualifier: string;
 	runtimeUserId: string;
@@ -231,6 +239,7 @@ function resolveConfig(
 		maxIterations: additional.maxIterations as number | undefined,
 		maxTokens: additional.maxTokens as number | undefined,
 		timeoutSeconds: additional.timeoutSeconds as number | undefined,
+		allowedTools: parseAllowedTools(additional.allowedTools as string | undefined),
 		actorId: (additional.actorId as string) || '',
 		qualifier: ((additional.qualifier as string) || '').trim(),
 		runtimeUserId: ((additional.runtimeUserId as string) || '').trim(),
@@ -286,6 +295,9 @@ async function runAgent(
 	}
 	validateExecutionRoleArn(executionRoleArn);
 
+	const truncation = buildTruncation(provisioning);
+	const tags = parseTags(provisioning.tags);
+
 	const desiredHash = configHash({
 		model: cfg.modelConfig,
 		systemPrompt: cfg.systemPrompt,
@@ -297,6 +309,8 @@ async function runAgent(
 		maxIterations: cfg.maxIterations,
 		maxTokens: cfg.maxTokens,
 		timeoutSeconds: cfg.timeoutSeconds,
+		allowedTools: cfg.allowedTools,
+		truncation,
 	});
 
 	// Resolve harness: existing match, drift-update, or create.
@@ -387,6 +401,7 @@ async function runAgent(
 		maxIterations: cfg.maxIterations,
 		maxTokens: cfg.maxTokens,
 		timeoutSeconds: cfg.timeoutSeconds,
+		harnessOptions: { allowedTools: cfg.allowedTools, truncation, tags },
 	};
 
 	if (!record) {
@@ -496,6 +511,7 @@ async function invokeExisting(
 		systemPrompt: cfg.systemPrompt.trim() ? cfg.systemPrompt : undefined,
 		tools: cfg.tools.length > 0 ? cfg.tools : undefined,
 		skills: cfg.skills,
+		allowedTools: cfg.allowedTools,
 		actorId: cfg.actorId || undefined,
 		qualifier: cfg.qualifier,
 		maxIterations: cfg.maxIterations,
@@ -949,6 +965,7 @@ interface ProvisionInput {
 	maxIterations?: number;
 	maxTokens?: number;
 	timeoutSeconds?: number;
+	harnessOptions: HarnessOptions;
 }
 
 async function createHarness(
@@ -973,7 +990,9 @@ async function createHarness(
 	if (input.maxTokens !== undefined) payload.maxTokens = input.maxTokens;
 	if (input.timeoutSeconds !== undefined) payload.timeoutSeconds = input.timeoutSeconds;
 
-	const response = await controlClient.createHarness(payload);
+	const response = await controlClient.createHarness(
+		withHarnessOptions(payload, input.harnessOptions, 'create'),
+	);
 	const harness = response.harness ?? {};
 	if (!harness.harnessId || !harness.arn) {
 		throw new ApplicationError('CreateHarness did not return harnessId and arn');
@@ -1019,7 +1038,10 @@ async function updateHarness(
 	if (input.maxTokens !== undefined) payload.maxTokens = input.maxTokens;
 	if (input.timeoutSeconds !== undefined) payload.timeoutSeconds = input.timeoutSeconds;
 
-	await controlClient.updateHarness(harnessId, payload);
+	await controlClient.updateHarness(
+		harnessId,
+		withHarnessOptions(payload, input.harnessOptions, 'update'),
+	);
 
 	const ready = await waitForHarnessReady(controlClient, harnessId);
 	if (ready.status !== 'READY') {
@@ -1041,6 +1063,7 @@ interface InvokePayloadInput {
 	systemPrompt?: string;
 	tools?: ToolConfig[];
 	skills?: IDataObject[];
+	allowedTools?: string[];
 	actorId?: string;
 	qualifier?: string;
 	maxIterations?: number;
@@ -1060,6 +1083,8 @@ function buildInvokePayload(input: InvokePayloadInput): IDataObject {
 	if (input.systemPrompt) payload.systemPrompt = [{ text: input.systemPrompt }];
 	if (input.tools && input.tools.length > 0) payload.tools = input.tools;
 	if (input.skills && input.skills.length > 0) payload.skills = input.skills;
+	if (input.allowedTools && input.allowedTools.length > 0)
+		payload.allowedTools = input.allowedTools;
 	if (input.actorId) payload.actorId = input.actorId;
 	if (input.maxIterations !== undefined) payload.maxIterations = input.maxIterations;
 	if (input.maxTokens !== undefined) payload.maxTokens = input.maxTokens;

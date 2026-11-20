@@ -19,7 +19,7 @@ export interface ToolConfig {
  *   - agentcore_browser
  *   - agentcore_code_interpreter
  *   - agentcore_gateway        (+ optional OAuth outbound auth)
- *   - remote_mcp
+ *   - remote_mcp               (+ optional IAM/SigV4 outbound auth)
  *   - inline_function          (client-side execution; round-trips via toolResult)
  *
  * Note: `agentcore_web_search` is described in the developer guide but is not yet
@@ -80,6 +80,8 @@ export function buildToolsArray(toolsUi: IDataObject | undefined): ToolConfig[] 
 				if (Object.keys(headers).length > 0) {
 					remoteMcp.headers = headers;
 				}
+				const outboundAuth = buildRemoteMcpOutboundAuth(uiTool);
+				if (outboundAuth) remoteMcp.outboundAuth = outboundAuth;
 				tools.push({
 					type: 'remote_mcp',
 					name: (uiTool.name as string) || 'remote_mcp',
@@ -139,6 +141,37 @@ function buildGatewayOutboundAuth(uiTool: IDataObject): IDataObject | undefined 
 		case 'awsIam':
 		default:
 			// SigV4 is the default when omitted; don't send it.
+			return undefined;
+	}
+}
+
+/**
+ * Builds HarnessRemoteMcpOutboundAuth for a remote MCP tool:
+ *   { awsIam: { service, region? } }  the harness SigV4-signs each MCP request
+ *                                     with its execution role
+ *   { none: {} }                      explicitly unauthenticated
+ * Returns undefined for the default ("headers only"), so the field is omitted
+ * and existing tool configs hash and serialize exactly as before.
+ */
+function buildRemoteMcpOutboundAuth(uiTool: IDataObject): IDataObject | undefined {
+	const mode = (uiTool.mcpOutboundAuth as string) || 'headers';
+	switch (mode) {
+		case 'awsIam': {
+			const service = ((uiTool.mcpIamService as string) || '').trim();
+			if (!service) {
+				throw new ApplicationError(
+					'Remote MCP IAM auth requires the SigV4 signing service name, for example "lambda" for a Lambda function URL.',
+				);
+			}
+			const awsIam: IDataObject = { service };
+			const region = ((uiTool.mcpIamRegion as string) || '').trim();
+			if (region) awsIam.region = region;
+			return { awsIam };
+		}
+		case 'none':
+			return { none: {} };
+		case 'headers':
+		default:
 			return undefined;
 	}
 }
@@ -210,8 +243,10 @@ export function configHash(input: {
 	maxIterations?: number;
 	maxTokens?: number;
 	timeoutSeconds?: number;
+	allowedTools?: string[];
+	truncation?: IDataObject;
 }): string {
-	const normalized = JSON.stringify({
+	const fields: Record<string, unknown> = {
 		model: input.model ?? null,
 		systemPrompt: input.systemPrompt,
 		tools: input.tools.slice().sort((a, b) => a.name.localeCompare(b.name)),
@@ -222,6 +257,13 @@ export function configHash(input: {
 		maxIterations: input.maxIterations ?? null,
 		maxTokens: input.maxTokens ?? null,
 		timeoutSeconds: input.timeoutSeconds ?? null,
-	});
+	};
+	// Fields added after 0.4.x are hashed only when set, so a workflow that does
+	// not use them keeps its existing hash and does not trigger an UpdateHarness.
+	if (input.allowedTools && input.allowedTools.length > 0) {
+		fields.allowedTools = input.allowedTools.slice().sort();
+	}
+	if (input.truncation) fields.truncation = input.truncation;
+	const normalized = JSON.stringify(fields);
 	return createHash('sha256').update(normalized).digest('hex');
 }

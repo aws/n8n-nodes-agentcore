@@ -43,6 +43,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Allowed Tools** (#112). Restricts which tools the agent can call, using the
+  harness `allowedTools` selectors (`read`, `shell`, `@builtin`, `@<server>`,
+  `@<server>/<tool>`, globs). The harness otherwise exposes a managed built-in set
+  (shell, file editing, sub-agents, web fetch) that AWS can extend and that adds
+  about 3,000 input tokens per model call. Set on the harness in Run Agent mode
+  and sent as a per-invocation override with a Harness ARN. Clearing the field
+  restores the default (`["*"]`) on the next update. Verified live: with `read`
+  only, the agent could not run a shell command; after clearing it, it could.
+- **Truncation Strategy** (#112): pin `none`, `sliding_window`, or
+  `summarization` (with ratio, preserved messages, and summary prompt) instead of
+  the managed default.
+- **Tags** on harness creation (#112), copied by AgentCore to the managed runtime
+  and memory.
+- **IAM (SigV4) outbound auth for remote MCP servers** (#112):
+  `remoteMcp.outboundAuth.awsIam { service, region? }`, so the harness signs MCP
+  calls with its execution role.
+- **Prompt-cache usage** (#112): `usage.cacheReadInputTokens` and
+  `usage.cacheWriteInputTokens`, summed across model calls, when the model reports
+  them.
+
+Existing workflows are unaffected: the new fields are hashed only when set, so a
+workflow that does not use them keeps its configuration hash and issues no
+`UpdateHarness`. Covered by `test/harnessOptions.test.ts`, `test/tools.test.ts`,
+and `test/stream.test.ts`.
+
 - **The node now identifies itself on every AgentCore request.** Requests carry
   `User-Agent: n8n-nodes-agentcore` and the same value in `x-amz-user-agent`, so
   harness usage that originates in n8n is distinguishable from usage by the AWS SDK,

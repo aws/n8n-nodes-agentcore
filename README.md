@@ -192,6 +192,11 @@ For a harness deployed outside n8n (CLI, console, CloudFormation, Terraform). Th
 When versioning/endpoint actions are enabled, the output also carries
 `versions` and/or `endpoint` (+ `endpoints`).
 
+`usage` is summed across every model call in the run. When the model reports
+prompt caching (Bedrock `converse_stream` harnesses cache automatically), it also
+carries `cacheReadInputTokens` and `cacheWriteInputTokens`; include them when you
+track cost, since cached tokens are billed at different rates.
+
 ### Client identification
 
 Every request the node makes to AgentCore, including the credential's Test request,
@@ -263,6 +268,33 @@ result in your workflow, then on a second node placement (same Session ID) fill
 the **Tool Results** field (Tool Use ID, function name, original input, result
 content). The node replays the assistant tool-use + your tool-result on the same
 session and the agent resumes. The Prompt may be blank on that second call.
+
+#### Limiting tools, context, and cost
+
+- **Allowed Tools** (Additional Options). Every harness session includes a
+  managed built-in tool set (`shell`, `read`, `write`, `edit`, `todo_write`,
+  `retrieve_context`, `subagent`, `web_fetch`) that AWS can extend, and its
+  definitions add roughly 3,000 input tokens to every model call. List only the
+  tools the agent needs, comma-separated: built-in names (`read`, `shell`),
+  `@builtin`, `@builtin/<name>`, `@<server>` for every tool of an MCP server, or
+  `@<server>/<tool>`. Configured tools you leave out cannot be called. In Run
+  Agent mode the list is set on the harness; with a Harness ARN it is a
+  per-invocation override. In our testing, `read` alone cut a short run from
+  about 5,000 to about 750 input tokens. See
+  [Tools](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/harness-tools.html).
+- **Truncation Strategy** (Provisioning Options). Without it the harness applies
+  AgentCore's managed policy, currently summarization, which can change. Pin
+  **None**, **Sliding Window** (window size), or **Summarization** (ratio,
+  messages kept verbatim, optional summary prompt) when a workflow needs fixed
+  behaviour. Switching back to Service Default does not reset an existing
+  harness; use Force Recreate.
+- **Tags (JSON)** (Provisioning Options). Cost-allocation tags, applied when the
+  harness is created and copied to its managed runtime and memory. Changing them
+  later does not retag an existing harness.
+- **Remote MCP IAM auth.** Set **MCP Outbound Auth** to AWS IAM / SigV4 and give
+  the signing service (for example `lambda` for a Lambda function URL). The
+  harness signs each MCP request with its execution role, so no secret is
+  stored; the role needs permission to call the endpoint.
 
 ### VPC, containers, filesystems
 

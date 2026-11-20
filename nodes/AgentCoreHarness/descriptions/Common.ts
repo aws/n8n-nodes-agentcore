@@ -63,6 +63,39 @@ export const toolsField: INodeProperties = {
 						'Optional HTTP headers as a JSON object. Reference an AgentCore Identity credential provider with an arn placeholder instead of inlining secrets.',
 				},
 				{
+					displayName: 'MCP IAM Region',
+					name: 'mcpIamRegion',
+					type: 'string',
+					default: '',
+					placeholder: 'us-west-2',
+					displayOptions: { show: { type: ['remote_mcp'], mcpOutboundAuth: ['awsIam'] } },
+					description: 'Region to sign requests for. Leave blank to use the harness Region.',
+				},
+				{
+					displayName: 'MCP IAM Service',
+					name: 'mcpIamService',
+					type: 'string',
+					default: '',
+					placeholder: 'lambda',
+					displayOptions: { show: { type: ['remote_mcp'], mcpOutboundAuth: ['awsIam'] } },
+					description:
+						'SigV4 signing name of the MCP endpoint, for example lambda for a Lambda function URL',
+				},
+				{
+					displayName: 'MCP Outbound Auth',
+					name: 'mcpOutboundAuth',
+					type: 'options',
+					default: 'headers',
+					displayOptions: { show: { type: ['remote_mcp'] } },
+					options: [
+						{ name: 'Headers Only (Default)', value: 'headers' },
+						{ name: 'AWS IAM / SigV4', value: 'awsIam' },
+						{ name: 'None', value: 'none' },
+					],
+					description:
+						'How the harness authenticates to the MCP server. AWS IAM signs each request with the harness execution role, which needs permission to call the endpoint.',
+				},
+				{
 					displayName: 'MCP Server URL',
 					name: 'url',
 					type: 'string',
