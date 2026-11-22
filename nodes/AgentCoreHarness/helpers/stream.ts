@@ -7,9 +7,12 @@
  *   contentBlockStart -> { contentBlockIndex, start: { toolUse: { name, toolUseId } } }
  *   contentBlockDelta -> { contentBlockIndex, delta: { text } | { toolUse: { input } } }
  *   messageStop       -> { stopReason: string }
- *   metadata          -> { usage: { inputTokens, outputTokens }, metrics: { latencyMs } }
+ *   metadata          -> { usage: { inputTokens, outputTokens, cacheReadInputTokens?,
+ *                        cacheWriteInputTokens? }, metrics: { latencyMs } }
  *                        (one per model call: a run with tool use emits several,
  *                        so usage and latency are summed across them)
+ *   hookEvent         -> { hookEventId, name, type, decision?, reason? } (one per lifecycle
+ *                        hook that fires; decision/reason only for Lambda targets)
  *   internalServerException / validationException / runtimeClientError -> error envelope
  *
  * Tool-use input arrives as a stream of partial-JSON string fragments in
@@ -24,12 +27,32 @@ export interface ToolUse {
 	input?: unknown;
 }
 
+/** A lifecycle hook that fired during the invocation, as reported in the stream. */
+export interface HookEvent {
+	hookEventId?: string;
+	name?: string;
+	/** before_invocation | before_tool_call | after_tool_call | after_invocation */
+	type?: string;
+	/** allow | deny. Present only for Lambda targets, which are the only blocking hooks. */
+	decision?: string;
+	reason?: string;
+}
+
 export interface InvokeResult {
 	text: string;
 	toolUses: ToolUse[];
 	stopReason?: string;
-	usage?: { inputTokens?: number; outputTokens?: number };
+	usage?: {
+		inputTokens?: number;
+		outputTokens?: number;
+		/** Prompt-cache reads, present when the model reports them (Bedrock converse_stream). */
+		cacheReadInputTokens?: number;
+		/** Prompt-cache writes, present when the model reports them. */
+		cacheWriteInputTokens?: number;
+	};
 	latencyMs?: number;
+	/** Lifecycle hooks that fired, in stream order. */
+	hookEvents: HookEvent[];
 	error?: string;
 }
 
@@ -37,6 +60,7 @@ export async function consumeStream(stream: AsyncIterable<any>): Promise<InvokeR
 	const result: InvokeResult = {
 		text: '',
 		toolUses: [],
+		hookEvents: [],
 	};
 
 	// Tool-use blocks indexed by contentBlockIndex so we can attach streamed
@@ -76,14 +100,29 @@ export async function consumeStream(stream: AsyncIterable<any>): Promise<InvokeR
 		} else if (event.metadata) {
 			const meta = event.metadata;
 			if (meta.usage) {
-				result.usage = {
+				const usage: NonNullable<InvokeResult['usage']> = {
 					inputTokens: (result.usage?.inputTokens ?? 0) + (meta.usage.inputTokens ?? 0),
 					outputTokens: (result.usage?.outputTokens ?? 0) + (meta.usage.outputTokens ?? 0),
 				};
+				// Cache fields are summed like the others, but only appear once a
+				// model call reports them, so the output shape is unchanged otherwise.
+				for (const key of ['cacheReadInputTokens', 'cacheWriteInputTokens'] as const) {
+					if (meta.usage[key] !== undefined || result.usage?.[key] !== undefined) {
+						usage[key] = (result.usage?.[key] ?? 0) + (meta.usage[key] ?? 0);
+					}
+				}
+				result.usage = usage;
 			}
 			if (meta.metrics?.latencyMs !== undefined) {
 				result.latencyMs = (result.latencyMs ?? 0) + meta.metrics.latencyMs;
 			}
+		} else if (event.hookEvent) {
+			const h = event.hookEvent;
+			const hookEvent: HookEvent = {};
+			for (const key of ['hookEventId', 'name', 'type', 'decision', 'reason'] as const) {
+				if (typeof h[key] === 'string') hookEvent[key] = h[key];
+			}
+			result.hookEvents.push(hookEvent);
 		} else if (event.internalServerException) {
 			throw new Error(
 				`AgentCore internal server error: ${errorText(event.internalServerException)}`,

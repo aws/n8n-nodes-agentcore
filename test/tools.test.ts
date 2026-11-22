@@ -4,6 +4,10 @@
  */
 import { describe, it, expect } from 'vitest';
 import { buildToolsArray, configHash } from '../nodes/AgentCoreHarness/helpers/tools';
+import type { ToolConfig } from '../nodes/AgentCoreHarness/helpers/tools';
+
+const PROVIDER_ARN =
+	'arn:aws:bedrock-agentcore:us-west-2:123456789012:token-vault/default/oauth2credentialprovider/my-provider';
 
 describe('buildToolsArray', () => {
 	it('returns an empty array when no tools are configured', () => {
@@ -23,11 +27,19 @@ describe('buildToolsArray', () => {
 
 	it('builds a remote_mcp tool with url and parsed headers', () => {
 		const tools = buildToolsArray({
-			tool: [{ type: 'remote_mcp', url: 'https://mcp.example.com', headers: '{"Authorization":"Bearer x"}' }],
+			tool: [
+				{
+					type: 'remote_mcp',
+					url: 'https://mcp.example.com',
+					headers: '{"Authorization":"Bearer x"}',
+				},
+			],
 		});
 		expect(tools[0]).toMatchObject({
 			type: 'remote_mcp',
-			config: { remoteMcp: { url: 'https://mcp.example.com', headers: { Authorization: 'Bearer x' } } },
+			config: {
+				remoteMcp: { url: 'https://mcp.example.com', headers: { Authorization: 'Bearer x' } },
+			},
 		});
 	});
 
@@ -43,29 +55,79 @@ describe('buildToolsArray', () => {
 
 	it('builds a gateway tool and omits outboundAuth for the SigV4 default', () => {
 		const tools = buildToolsArray({
-			tool: [{ type: 'agentcore_gateway', gatewayArn: 'arn:aws:...:gateway/g', outboundAuth: 'awsIam' }],
+			tool: [
+				{ type: 'agentcore_gateway', gatewayArn: 'arn:aws:...:gateway/g', outboundAuth: 'awsIam' },
+			],
 		});
 		expect(tools[0].config).toEqual({ agentCoreGateway: { gatewayArn: 'arn:aws:...:gateway/g' } });
 	});
 
-	it('builds a gateway tool with OAuth outbound auth', () => {
+	it('builds gateway OAuth outbound auth as { providerArn, scopes }', () => {
 		const tools = buildToolsArray({
 			tool: [
 				{
 					type: 'agentcore_gateway',
 					gatewayArn: 'arn:g',
 					outboundAuth: 'oauth',
-					oauthProviderName: 'prov',
+					oauthProviderArn: PROVIDER_ARN,
 					oauthScopes: 'a, b',
+				},
+			],
+		});
+		// The service rejects the pre-0.4.6 `{ oauthCredentialProvider: { credentialProviderName } }`
+		// shape; `oauth` is an OAuthCredentialProvider with providerArn + scopes.
+		expect(tools[0].config).toEqual({
+			agentCoreGateway: {
+				gatewayArn: 'arn:g',
+				outboundAuth: { oauth: { providerArn: PROVIDER_ARN, scopes: ['a', 'b'] } },
+			},
+		});
+	});
+
+	it('accepts an ARN saved in the legacy oauthProviderName field', () => {
+		const tools = buildToolsArray({
+			tool: [
+				{
+					type: 'agentcore_gateway',
+					gatewayArn: 'arn:g',
+					outboundAuth: 'oauth',
+					oauthProviderName: PROVIDER_ARN,
+					oauthScopes: 'read',
 				},
 			],
 		});
 		expect(tools[0].config).toEqual({
 			agentCoreGateway: {
 				gatewayArn: 'arn:g',
-				outboundAuth: { oauth: { oauthCredentialProvider: { credentialProviderName: 'prov', scopes: ['a', 'b'] } } },
+				outboundAuth: { oauth: { providerArn: PROVIDER_ARN, scopes: ['read'] } },
 			},
 		});
+	});
+
+	it('rejects a provider name where the ARN is required', () => {
+		expect(() =>
+			buildToolsArray({
+				tool: [
+					{
+						type: 'agentcore_gateway',
+						gatewayArn: 'arn:g',
+						outboundAuth: 'oauth',
+						oauthProviderName: 'my-provider',
+						oauthScopes: 'read',
+					},
+				],
+			}),
+		).toThrow(/needs the credential provider ARN, not its name/);
+	});
+
+	it('requires a provider ARN and at least one scope for gateway OAuth', () => {
+		const base = { type: 'agentcore_gateway', gatewayArn: 'arn:g', outboundAuth: 'oauth' };
+		expect(() => buildToolsArray({ tool: [{ ...base, oauthScopes: 'read' }] })).toThrow(
+			/requires an OAuth Credential Provider ARN/,
+		);
+		expect(() => buildToolsArray({ tool: [{ ...base, oauthProviderArn: PROVIDER_ARN }] })).toThrow(
+			/at least one OAuth scope/,
+		);
 	});
 
 	it('throws when gateway is missing an ARN', () => {
@@ -118,8 +180,20 @@ describe('configHash', () => {
 	});
 
 	it('is order-independent for tools (sorted by name before hashing)', () => {
-		const a = configHash({ ...base, tools: [{ type: 't', name: 'a' }, { type: 't', name: 'b' }] });
-		const b = configHash({ ...base, tools: [{ type: 't', name: 'b' }, { type: 't', name: 'a' }] });
+		const a = configHash({
+			...base,
+			tools: [
+				{ type: 't', name: 'a' },
+				{ type: 't', name: 'b' },
+			],
+		});
+		const b = configHash({
+			...base,
+			tools: [
+				{ type: 't', name: 'b' },
+				{ type: 't', name: 'a' },
+			],
+		});
 		expect(a).toBe(b);
 	});
 
@@ -127,5 +201,74 @@ describe('configHash', () => {
 		const a = configHash({ ...base, model: { bedrockModelConfig: { modelId: 'x' } } });
 		const b = configHash({ ...base, model: { bedrockModelConfig: { modelId: 'y' } } });
 		expect(a).not.toBe(b);
+	});
+});
+
+describe('remote MCP outbound auth', () => {
+	const url = 'https://abc.lambda-url.us-west-2.on.aws/mcp';
+
+	it('omits outboundAuth by default (headers only)', () => {
+		const tools = buildToolsArray({ tool: [{ type: 'remote_mcp', name: 'm', url }] });
+		expect(tools[0].config).toEqual({ remoteMcp: { url } });
+	});
+
+	it('builds awsIam with service and optional region', () => {
+		const withRegion = buildToolsArray({
+			tool: [
+				{
+					type: 'remote_mcp',
+					name: 'm',
+					url,
+					mcpOutboundAuth: 'awsIam',
+					mcpIamService: 'lambda',
+					mcpIamRegion: 'us-east-1',
+				},
+			],
+		});
+		expect(withRegion[0].config).toEqual({
+			remoteMcp: { url, outboundAuth: { awsIam: { service: 'lambda', region: 'us-east-1' } } },
+		});
+		const noRegion = buildToolsArray({
+			tool: [
+				{ type: 'remote_mcp', name: 'm', url, mcpOutboundAuth: 'awsIam', mcpIamService: 'lambda' },
+			],
+		});
+		expect(noRegion[0].config).toEqual({
+			remoteMcp: { url, outboundAuth: { awsIam: { service: 'lambda' } } },
+		});
+	});
+
+	it('requires a signing service for awsIam', () => {
+		expect(() =>
+			buildToolsArray({
+				tool: [{ type: 'remote_mcp', name: 'm', url, mcpOutboundAuth: 'awsIam' }],
+			}),
+		).toThrow(/signing service name/);
+	});
+});
+
+describe('configHash with harness options', () => {
+	const base = { systemPrompt: 'x', tools: [] as ToolConfig[] };
+	// Hashes produced by the 0.4.5 release (before these options existed) for
+	// two configs that do not use them. They must not change, or every existing
+	// workflow would issue an UpdateHarness on its next run.
+	const LEGACY = 'c1eafd7c56fe8b149d3d4e032d0bd32fda7ac3a803db422b004d8c196ced4b2b';
+	const typical = {
+		model: { bedrockModelConfig: { modelId: 'global.anthropic.claude-sonnet-4-6' } },
+		systemPrompt: 'You are helpful.',
+		tools: [{ type: 'agentcore_code_interpreter', name: 'code_interpreter' }] as ToolConfig[],
+		memory: { managedMemoryConfiguration: {} },
+		maxIterations: 50,
+	};
+	const LEGACY_TYPICAL = '1e73cf512899af6141bc45e44cad46b3f645d4eda964b06f2806fb233d1e2283';
+
+	it('keeps the 0.4.5 hash when the new options are unset', () => {
+		expect(configHash(base)).toBe(LEGACY);
+		expect(configHash({ ...base, truncation: undefined })).toBe(LEGACY);
+		expect(configHash(typical)).toBe(LEGACY_TYPICAL);
+	});
+
+	it('changes when truncation is set', () => {
+		expect(configHash({ ...base, truncation: { strategy: 'none' } })).not.toBe(LEGACY);
 	});
 });

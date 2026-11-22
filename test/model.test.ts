@@ -39,13 +39,52 @@ describe('buildModelConfig', () => {
 		);
 	});
 
+	it('passes apiBase through for openai (custom OpenAI-compatible endpoint)', () => {
+		const cfg = buildModelConfig({
+			provider: 'openai',
+			modelId: 'gpt-5.4',
+			options: { apiKeyArn: 'arn:key', apiBase: 'https://gateway.example.com/v1' },
+		});
+		expect(cfg).toEqual({
+			openAiModelConfig: {
+				modelId: 'gpt-5.4',
+				apiKeyArn: 'arn:key',
+				apiBase: 'https://gateway.example.com/v1',
+			},
+		});
+	});
+
+	it('never sends the Bedrock-only converse_stream format to openai', () => {
+		// The API Format option defaults to converse_stream in the UI; OpenAI only
+		// accepts responses or chat_completions, so the default must be dropped.
+		const dropped = buildModelConfig({
+			provider: 'openai',
+			modelId: 'gpt-5.4',
+			options: { apiKeyArn: 'arn:key', apiFormat: 'converse_stream' },
+		});
+		expect(dropped).toEqual({ openAiModelConfig: { modelId: 'gpt-5.4', apiKeyArn: 'arn:key' } });
+
+		for (const apiFormat of ['responses', 'chat_completions']) {
+			const kept = buildModelConfig({
+				provider: 'openai',
+				modelId: 'gpt-5.4',
+				options: { apiKeyArn: 'arn:key', apiFormat },
+			});
+			expect(kept).toEqual({
+				openAiModelConfig: { modelId: 'gpt-5.4', apiKeyArn: 'arn:key', apiFormat },
+			});
+		}
+	});
+
 	it('builds a gemini config with topK and requires an API key ARN', () => {
 		const cfg = buildModelConfig({
 			provider: 'gemini',
 			modelId: 'gemini-2.5-pro',
 			options: { apiKeyArn: 'arn:key', topK: 40 },
 		});
-		expect(cfg).toEqual({ geminiModelConfig: { modelId: 'gemini-2.5-pro', apiKeyArn: 'arn:key', topK: 40 } });
+		expect(cfg).toEqual({
+			geminiModelConfig: { modelId: 'gemini-2.5-pro', apiKeyArn: 'arn:key', topK: 40 },
+		});
 
 		expect(() => buildModelConfig({ provider: 'gemini', modelId: 'x', options: {} })).toThrow(
 			/requires an API Key ARN/,
@@ -59,13 +98,20 @@ describe('buildModelConfig', () => {
 			options: { apiBase: 'https://proxy.example.com' },
 		});
 		expect(cfg).toEqual({
-			liteLlmModelConfig: { modelId: 'gemini/gemini-2.5-pro', apiBase: 'https://proxy.example.com' },
+			liteLlmModelConfig: {
+				modelId: 'gemini/gemini-2.5-pro',
+				apiBase: 'https://proxy.example.com',
+			},
 		});
 	});
 
 	it('throws when additionalParams is not valid JSON', () => {
 		expect(() =>
-			buildModelConfig({ provider: 'bedrock', modelId: 'x', options: { additionalParams: 'nope' } }),
+			buildModelConfig({
+				provider: 'bedrock',
+				modelId: 'x',
+				options: { additionalParams: 'nope' },
+			}),
 		).toThrow(/valid JSON object/);
 	});
 });

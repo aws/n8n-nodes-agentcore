@@ -63,6 +63,38 @@ export const toolsField: INodeProperties = {
 						'Optional HTTP headers as a JSON object. Reference an AgentCore Identity credential provider with an arn placeholder instead of inlining secrets.',
 				},
 				{
+					displayName: 'MCP IAM Region',
+					name: 'mcpIamRegion',
+					type: 'string',
+					default: '',
+					placeholder: 'us-west-2',
+					displayOptions: { show: { type: ['remote_mcp'], mcpOutboundAuth: ['awsIam'] } },
+					description: 'Region to sign requests for. Leave blank to use the harness Region.',
+				},
+				{
+					displayName: 'MCP IAM Service',
+					name: 'mcpIamService',
+					type: 'string',
+					default: '',
+					placeholder: 'lambda',
+					displayOptions: { show: { type: ['remote_mcp'], mcpOutboundAuth: ['awsIam'] } },
+					description:
+						'SigV4 signing name of the MCP endpoint, for example lambda for a Lambda function URL',
+				},
+				{
+					displayName: 'MCP Outbound Auth',
+					name: 'mcpOutboundAuth',
+					type: 'options',
+					default: 'headers',
+					displayOptions: { show: { type: ['remote_mcp'] } },
+					options: [
+						{ name: 'Headers Only (Default)', value: 'headers' },
+						{ name: 'AWS IAM / SigV4', value: 'awsIam' },
+					],
+					description:
+						'How the harness authenticates to the MCP server. AWS IAM signs each request with the harness execution role, which needs permission to call the endpoint.',
+				},
+				{
 					displayName: 'MCP Server URL',
 					name: 'url',
 					type: 'string',
@@ -80,12 +112,15 @@ export const toolsField: INodeProperties = {
 						'Tool name. Optional for managed tools. For an inline function this is the function name the model calls, 1 to 64 characters of letters, numbers, underscores, and hyphens.',
 				},
 				{
-					displayName: 'OAuth Credential Provider Name',
-					name: 'oauthProviderName',
+					displayName: 'OAuth Credential Provider ARN',
+					name: 'oauthProviderArn',
 					type: 'string',
 					default: '',
+					placeholder:
+						'arn:aws:bedrock-agentcore:us-west-2:123456789012:token-vault/default/oauth2credentialprovider/my-provider',
 					displayOptions: { show: { type: ['agentcore_gateway'], outboundAuth: ['oauth'] } },
-					description: 'Name of the AgentCore Identity OAuth credential provider',
+					description:
+						'ARN of the AgentCore Identity OAuth2 credential provider the harness uses for outbound calls through the Gateway',
 				},
 				{
 					displayName: 'OAuth Scopes',
@@ -94,7 +129,7 @@ export const toolsField: INodeProperties = {
 					default: '',
 					placeholder: 'read,write',
 					displayOptions: { show: { type: ['agentcore_gateway'], outboundAuth: ['oauth'] } },
-					description: 'Comma-separated OAuth scopes',
+					description: 'Comma-separated OAuth scopes. At least one scope is required.',
 				},
 				{
 					displayName: 'Outbound Auth',

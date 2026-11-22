@@ -75,10 +75,18 @@ export interface ControlRequest {
 	method: 'GET' | 'POST' | 'PATCH' | 'DELETE';
 	/** Path with any labels already substituted, e.g. `/harnesses/abc123`. */
 	path: string;
-	/** Optional query params. Undefined/empty values are dropped. */
-	query?: Record<string, string | number | undefined>;
+	/**
+	 * Optional query params. Undefined/empty values are dropped; an array value
+	 * repeats the key (`tagKeys=a&tagKeys=b`), as list-shaped query members need.
+	 */
+	query?: Record<string, string | number | string[] | undefined>;
 	/** Optional request body object (serialized to JSON). */
 	body?: unknown;
+	/**
+	 * Skip the automatic `clientToken`. Only for operations whose API model has
+	 * no clientToken member and that are idempotent anyway (TagResource).
+	 */
+	omitClientToken?: boolean;
 }
 
 /**
@@ -100,7 +108,7 @@ export async function controlRequest<T = any>(
 	// regenerated per attempt.
 	const mutating = req.method !== 'GET';
 	const body =
-		mutating && req.body !== undefined
+		mutating && req.body !== undefined && !req.omitClientToken
 			? { clientToken: newClientToken(), ...(req.body as Record<string, unknown>) }
 			: req.body;
 	const bodyString = body === undefined ? '' : JSON.stringify(body);
@@ -262,11 +270,15 @@ export async function invokeHarnessStream(
 	return res.body as ByteStream;
 }
 
-function buildQuery(query?: Record<string, string | number | undefined>): string {
+function buildQuery(query?: Record<string, string | number | string[] | undefined>): string {
 	if (!query) return '';
 	const params = new URLSearchParams();
 	for (const [k, v] of Object.entries(query)) {
-		if (v !== undefined && v !== '') params.set(k, String(v));
+		if (Array.isArray(v)) {
+			for (const item of v) if (item !== '') params.append(k, item);
+		} else if (v !== undefined && v !== '') {
+			params.set(k, String(v));
+		}
 	}
 	const s = params.toString();
 	return s ? `?${s}` : '';
