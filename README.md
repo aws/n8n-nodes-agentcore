@@ -163,7 +163,7 @@ The node has a single operation. The **Harness ARN** field decides the mode.
 
 Type an Agent Name, set the system prompt and prompt, optionally turn on **Add Tools** to configure tools, and run. The node:
 
-- Creates the harness on first execution (~30 seconds), stores the ARN in workflow static data
+- Creates the harness on first execution (a few minutes, about 4 in our testing), stores the ARN in workflow static data
 - Reuses the same harness on subsequent runs (~3 seconds)
 - Updates the harness if you change the model, system prompt, tools, or limits
 - Streams the response back
@@ -191,6 +191,14 @@ For a harness deployed outside n8n (CLI, console, CloudFormation, Terraform). Th
 
 When versioning/endpoint actions are enabled, the output also carries
 `versions` and/or `endpoint` (+ `endpoints`).
+
+`usage` is summed across every model call in the run. When the model reports
+prompt caching (automatic for supported models using `converse_stream` on Amazon
+Bedrock, initially Anthropic models), it also
+carries `cacheReadInputTokens` and `cacheWriteInputTokens`. `inputTokens` then
+counts only the uncached part (in our testing 4 tokens next to about 5,000 cached),
+so include the cache fields when you track cost; cached tokens are billed at
+different rates.
 
 ### Client identification
 
@@ -250,9 +258,19 @@ to reveal the Skills section (both are hidden by default to keep the node
 compact). Tools now include **Gateway** with optional OAuth outbound auth and
 **Inline Functions**, alongside Browser, Code Interpreter, and remote MCP.
 **Skills** load domain knowledge on demand from the AWS catalog (glob patterns),
-Git, S3, or a filesystem path. (Need web search? Point a Remote MCP tool at a
-search MCP server — a managed `agentcore_web_search` type is documented by
-AgentCore but not yet accepted by the harness API.)
+Git, S3, or a filesystem path.
+
+**Gateway OAuth** needs the ARN of an AgentCore Identity OAuth2 credential
+provider (`...:token-vault/default/oauth2credentialprovider/<name>`) and at least
+one scope.
+
+**Web search** is not a separate tool type. Create an AgentCore Gateway with the
+Web Search connector as a target (`connectorId: "web-search"`), then add it here
+as a **Gateway** tool with the default AWS IAM outbound auth. Two roles are
+involved: the Gateway service role needs `bedrock-agentcore:InvokeWebSearch`, and
+the harness execution role needs `bedrock-agentcore:InvokeGateway` on the gateway.
+See [Web search](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/harness-tools.html#harness-web-search)
+for setup and Region availability.
 
 #### Inline-function round-trip
 
@@ -260,9 +278,66 @@ Add an **Inline Function** tool (name, description, JSON input schema). When the
 agent calls it, the invocation returns `stopReason: "tool_use"` and the output's
 `toolUses[]` carries the `toolUseId`, `name`, and parsed `input`. Compute the
 result in your workflow, then on a second node placement (same Session ID) fill
-the **Tool Results** field (Tool Use ID, function name, original input, result
-content). The node replays the assistant tool-use + your tool-result on the same
-session and the agent resumes. The Prompt may be blank on that second call.
+the **Tool Results** field (Tool Use ID, function name, result content). The
+harness resumes the pending call from its session state and the agent continues.
+The Prompt may be blank on that second call.
+
+Only act on a tool call when `stopReason` is `"tool_use"`. If the harness has
+lifecycle hooks, a tool request can show up in `toolUses` and then be denied by a
+hook, in which case the run ends with a different stop reason (such as
+`hook_stopped`). Gate the round-trip on `stopReason`, as
+`examples/07-inline-function-roundtrip.json` does.
+
+#### Limiting tools, context, and cost
+
+- **Allowed Built-in Tools** (Additional Options). Every harness session includes
+  a managed built-in tool set (`shell`, `read`, `write`, `edit`, `todo_write`,
+  `retrieve_context`, `subagent`, `web_fetch`) that AWS can extend, and its
+  definitions add roughly 3,000 input tokens to every model call. Add this option
+  and tick only the built-ins the agent needs, or none. The tools you configured
+  under **Tools** always stay available: the node adds them as `@<tool name>`,
+  because a restricted list otherwise disables every tool it does not name. It is
+  sent with each invocation and never written to the harness, so changing it is
+  instant. In our testing, `read` alone cut a short run from about 5,000 to about
+  750 input tokens. This limits which tools the agent can choose, not what those
+  tools can do: with Shell removed, an agent that also has Code Interpreter still
+  ran a shell command through it, inside the Code Interpreter sandbox. See
+  [Tools](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/harness-tools.html).
+- **Additional Tool Selectors** (Additional Options). To narrow an MCP server or
+  Gateway to some of its tools, list selectors such as `@my-mcp-server/read_*`.
+  A configured tool named here is limited to what you list.
+- **Truncation** (Provisioning Options). Without it the harness applies
+  AgentCore's managed policy, currently summarization, which can change. Add the
+  Truncation group and pick **Sliding Window** (window size), **Summarization**
+  (ratio, messages kept verbatim, optional summary prompt), or **None** when a
+  workflow needs fixed behaviour; the matching fields appear with defaults.
+  Changing the strategy updates the harness. Removing the group does **not**
+  return the harness to the managed default; the last pinned strategy stays until
+  you use Force Recreate.
+- **Tags (JSON)** (Provisioning Options). Cost-allocation tags. They are set on
+  CreateHarness, where AgentCore also copies them to the managed runtime and
+  memory. Later changes are applied to the harness with TagResource /
+  UntagResource, without a harness update (the copies on the runtime and memory
+  are not changed). Tags set outside n8n are never removed. Needs
+  `bedrock-agentcore:TagResource` and `UntagResource`.
+- **Lifecycle Hooks** (Provisioning Options). Run your own checks or notifications
+  at four points in the agent loop, up to 20 hooks. A **Lambda** target returns
+  allow or deny: a deny before the invocation stops the run
+  (`stopReason: "hook_stopped"`), a deny before a tool call skips that call and the
+  agent continues, and a deny after a tool call keeps the result and stops the run.
+  **SNS** and **EventBridge** targets receive notifications only (EventBridge
+  events use source `bedrock-agentcore.harness`, detail type
+  `Harness Lifecycle Hook`), which is a simple way to start an n8n workflow from an
+  agent run. The execution role needs `lambda:InvokeFunction`, `sns:Publish`, or
+  `events:PutEvents` on each target. Hooks also apply to tool calls made by
+  subagents. Configuring hooks replaces any hooks set on the harness elsewhere;
+  clearing them removes only hooks the node set. Each hook that fires appears in
+  the output `hookEvents`, with the decision and reason for Lambda hooks. See
+  [Lifecycle hooks](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/harness-lifecycle-hooks.html).
+- **Remote MCP IAM auth.** Set **MCP Outbound Auth** to AWS IAM / SigV4 and give
+  the signing service (for example `lambda` for a Lambda function URL). The
+  harness signs each MCP request with its execution role, so no secret is
+  stored; the role needs permission to call the endpoint.
 
 ### VPC, containers, filesystems
 
@@ -347,6 +422,15 @@ a specific endpoint instead of the latest version.
 > managed memory instead of deleting it, and the run-mode default model is
 > Claude Sonnet 4.6.
 
+> **Upgrading to 0.5.0?** Existing workflows keep working unchanged: their nodes
+> stay on node version 2, and none of the new options is on until you add it.
+> New placements use node version 3, where a blank **Model ID** or **System
+> Prompt** uses AgentCore's managed defaults (the current recommended model and a
+> task-oriented system prompt that AWS improves over time) instead of Claude
+> Sonnet 4.6 and a one-line prompt. Set either field to pin it. One behaviour
+> change: for the OpenAI provider, **API Base URL** is now honoured, so a value
+> left in that field redirects calls and the API key to that URL.
+
 ## Examples
 
 The `examples/` folder has importable workflows:
@@ -430,7 +514,7 @@ Open `http://localhost:5678`. The **Amazon Bedrock AgentCore** node should appea
 3. Attach the credential to the agent node
 4. Click **Execute Workflow**
 
-First run takes ~30 seconds (harness creation). Subsequent runs are instant.
+First run takes a few minutes (harness creation, about 4 minutes in our testing). Subsequent runs reuse the harness and return in seconds.
 
 ### Step 6 — Verify
 
@@ -498,8 +582,9 @@ zero runtime dependencies, and **is verified**. It is listed at
 - **OpenAI-via-Mantle without a key** uses the Bedrock provider with API Format
   `Responses`/`Chat Completions`; the SDK's `openAiModelConfig` requires an API
   key (Q1).
-- **First run is slow.** ~30 seconds for harness creation; managed memory adds a
-  little more. Subsequent runs are instant.
+- **First run is slow.** Harness creation takes a few minutes (about 4 minutes in
+  us-west-2 in November 2026, with or without managed memory); VPC mode can take
+  longer. Subsequent runs reuse the harness and return in seconds.
 - **Workflow static data** holds the harness ARN. Renaming an agent creates a new
   harness; the old one remains in your account until manually deleted.
 - **Inline functions are stateless across calls.** The tool-result round-trip is
@@ -511,7 +596,7 @@ zero runtime dependencies, and **is verified**. It is listed at
 |---|---|
 | **The agent doesn't remember previous turns** | The **Session ID** was left blank, so each run is a new conversation (output shows `sessionSource: "generated"`). Set a stable Session ID and reuse it across runs. See [Memory & sessions](#memory--sessions). |
 | **`AccessDenied` / `not authorized to perform` on the first run** | Either the **Bedrock model isn't enabled** (Bedrock console → Model access), or the **execution role is missing a scoped action** for the feature you used (e.g. `bedrock-mantle:CreateInference` for Mantle models, token-vault read for OpenAI/Gemini keys, `InvokeGateway` for gateways). See [IAM setup](#iam-setup). |
-| **First run hangs for ~30 seconds** | Expected — the node is creating the harness on first use. Subsequent runs reuse it and return in a few seconds. |
+| **First run takes several minutes** | Expected — the node is creating the harness on first use (about 4 minutes in our testing, longer in VPC mode). The node waits up to 10 minutes. Subsequent runs reuse it and return in a few seconds. |
 | **"Harness … did not reach READY within …" on a VPC harness** | VPC harness creation is slow (ENI provisioning in your subnets). The node now waits up to 10 minutes; if you still see this, the harness is often **still creating** — re-run the node shortly and it will find the now-READY harness and invoke it. A *persistent* failure (or `CREATE_FAILED`) usually means the managed container image could not be pulled: check that the **VPC endpoints** exist (`ecr.dkr` + `ecr.api` interface, `s3` gateway) and that the **execution role has private-ECR pull permissions** on `repository/harness-*`. See [IAM setup](#iam-setup). |
 | **OpenAI / Gemini model errors about a missing key** | Direct OpenAI/Gemini require an **API Key ARN** (a token-vault credential provider) in Model Options. To use OpenAI-style models without a key, pick the **Bedrock** provider with API Format `Responses`/`Chat Completions` and a Mantle model id. |
 | **Two "Amazon Bedrock AgentCore" nodes in the palette** | A leftover/older install. Remove the stale package from `~/.n8n/nodes` (or `~/.n8n/custom`), then fully restart n8n and open a fresh browser tab. |

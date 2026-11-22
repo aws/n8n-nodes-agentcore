@@ -39,6 +39,7 @@ authoritative for the conventions below.
 │           ├── model.ts                      # buildModelConfig() multi-provider union
 │           ├── memory.ts                     # buildMemoryConfig()/Update() managed/BYO/disabled
 │           ├── environment.ts                # VPC network + filesystem mounts + container artifact
+│           ├── harnessOptions.ts             # allowed tools, truncation, tags, lifecycle hooks
 │           ├── skills.ts                     # buildSkillsArray() aws/git/s3/path
 │           ├── versioning.ts                 # list versions, upsert named endpoint
 │           ├── oauth.ts                       # raw-HTTPS Bearer invoke + event-stream decode
@@ -150,11 +151,15 @@ These come directly from `docs/SPEC.md` §9 and are checked in
 
 ## n8n conventions specific to this repo
 
-- The node version (`description.version`) is `2`. Bump it only on a
-  **breaking change to the node's UI fields**, never on logic-only changes.
-  Version bumps strand existing workflows on the old version - only the
-  next version's typeVersion-aware fields apply to new placements. Any
-  workflow JSON in `examples/` must carry `"typeVersion": 2` to match.
+- The node versions (`description.version`) are `[2, 3]`, with
+  `defaultVersion: 3`. Version 3 (0.5.0) differs only in Run Agent defaults: a
+  blank Model ID or System Prompt is omitted so AgentCore's managed defaults
+  apply, where version 2 fills in Claude Sonnet 4.6 and a one-line prompt.
+  Bump the version only on a **breaking change to the node's UI fields or a
+  change of default behaviour**, never on logic-only changes; existing
+  placements keep their version, so the old behaviour must keep working.
+  Workflow JSON in `examples/` may carry `"typeVersion": 2` or `3`; new
+  examples should use `3`.
 - The package.json `n8n` field points to compiled JS paths under `dist/`.
   Adding a new node or credential requires updating that field.
 - The icon (`agentcore.svg`) must be referenced as `file:agentcore.svg`
@@ -204,7 +209,8 @@ The roadmap from `docs/SPEC.md`:
 |---------|-------------------------------------------------------------|
 | v0.1    | Run Agent, Invoke Existing, MCP/Browser/CodeInterp/Gateway tools |
 | v0.2    | Multi-provider models, managed memory, VPC, custom containers, filesystem mounts, skills, inline functions, versions & endpoints |
-| v0.4    | OAuth Bearer Token on the credential, Add Tools / Add Skills toggles, AWS calls through n8n's HTTP helper, node `typeVersion` 2 (current) |
+| v0.4    | OAuth Bearer Token on the credential, Add Tools / Add Skills toggles, AWS calls through n8n's HTTP helper, node `typeVersion` 2 |
+| v0.5    | Allowed built-in tools, truncation, tags, lifecycle hooks, remote MCP IAM auth, cache usage, managed defaults in node `typeVersion` 3 (current) |
 | later   | ExecuteCommand (shell) with Bearer, custom Browser / Code Interpreter resource ARNs, CloudFormation quick-create for the execution role, Export to Code, Step Functions |
 
 Anything outside that list is "open question" - discuss before
