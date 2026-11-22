@@ -5,6 +5,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
 	buildAllowedTools,
+	buildHooks,
 	buildTruncation,
 	parseSelectors,
 	parseTags,
@@ -228,5 +229,129 @@ describe('syncTags', () => {
 		await syncTags(c, arn, { team: 'a', env: 'prod' }, undefined);
 		expect(c.untagResource).toHaveBeenCalledWith(arn, ['team', 'env']);
 		expect(c.tagResource).not.toHaveBeenCalled();
+	});
+});
+
+describe('buildHooks', () => {
+	const LAMBDA = 'arn:aws:lambda:us-west-2:111122223333:function:policy';
+	const TOPIC = 'arn:aws:sns:us-west-2:111122223333:events';
+	const BUS = 'arn:aws:events:us-west-2:111122223333:event-bus/harness';
+	const hooksOf = (...hook: Record<string, unknown>[]) => ({ hook });
+
+	it('returns an empty list when no hooks are configured', () => {
+		expect(buildHooks(undefined)).toEqual([]);
+		expect(buildHooks({})).toEqual([]);
+	});
+
+	it('maps each event and target type to the API union', () => {
+		expect(
+			buildHooks(
+				hooksOf(
+					{
+						event: 'before_invocation',
+						name: 'gate',
+						targetType: 'lambda',
+						targetArn: LAMBDA,
+						lambdaTimeoutSeconds: 5,
+						failureMode: 'allow',
+					},
+					{ event: 'before_tool_call', name: 'policy', targetType: 'lambda', targetArn: LAMBDA },
+					{ event: 'after_tool_call', name: 'notify', targetType: 'sns', targetArn: TOPIC },
+					{ event: 'after_invocation', name: 'audit', targetType: 'eventBridge', targetArn: BUS },
+				),
+			),
+		).toEqual([
+			{
+				beforeInvocation: {
+					name: 'gate',
+					target: { lambda: { arn: LAMBDA, timeoutSeconds: 5, failureMode: 'allow' } },
+				},
+			},
+			{
+				beforeToolCall: {
+					name: 'policy',
+					target: { lambda: { arn: LAMBDA, failureMode: 'deny' } },
+				},
+			},
+			{ afterToolCall: { name: 'notify', target: { sns: { arn: TOPIC } } } },
+			{ afterInvocation: { name: 'audit', target: { eventBridge: { arn: BUS } } } },
+		]);
+	});
+
+	it('does not send Lambda-only settings for notification targets', () => {
+		const [hook] = buildHooks(
+			hooksOf({
+				event: 'after_tool_call',
+				name: 'n',
+				targetType: 'sns',
+				targetArn: TOPIC,
+				lambdaTimeoutSeconds: 30,
+				failureMode: 'allow',
+			}),
+		);
+		expect(hook).toEqual({ afterToolCall: { name: 'n', target: { sns: { arn: TOPIC } } } });
+	});
+
+	it('rejects missing or duplicate names', () => {
+		expect(() => buildHooks(hooksOf({ targetType: 'lambda', targetArn: LAMBDA }))).toThrow(
+			/Name is required/,
+		);
+		expect(() =>
+			buildHooks(
+				hooksOf(
+					{ name: 'dup', targetType: 'lambda', targetArn: LAMBDA },
+					{ name: 'dup', targetType: 'sns', targetArn: TOPIC },
+				),
+			),
+		).toThrow(/must be unique/);
+	});
+
+	it('rejects an ARN that does not match the target type', () => {
+		expect(() =>
+			buildHooks(hooksOf({ name: 'x', targetType: 'lambda', targetArn: TOPIC })),
+		).toThrow(/not a valid lambda ARN/);
+		expect(() =>
+			buildHooks(hooksOf({ name: 'x', targetType: 'eventBridge', targetArn: LAMBDA })),
+		).toThrow(/not a valid eventBridge ARN/);
+	});
+
+	it('enforces the documented Lambda timeout range and the 20-hook limit', () => {
+		for (const bad of [0, 901, 2.5]) {
+			expect(() =>
+				buildHooks(
+					hooksOf({
+						name: 'x',
+						targetType: 'lambda',
+						targetArn: LAMBDA,
+						lambdaTimeoutSeconds: bad,
+					}),
+				),
+			).toThrow(/1 to 900 seconds/);
+		}
+		const many = Array.from({ length: 21 }, (_, i) => ({
+			name: `h${i}`,
+			targetType: 'sns',
+			targetArn: TOPIC,
+		}));
+		expect(() => buildHooks({ hook: many })).toThrow(/at most 20/);
+	});
+});
+
+describe('withHarnessOptions hooks', () => {
+	const base = { systemPrompt: [{ text: 'x' }] };
+	const hooks = [{ beforeToolCall: { name: 'p', target: { lambda: { arn: 'a' } } } }];
+
+	it('sends configured hooks on create and update', () => {
+		expect(withHarnessOptions(base, { hooks }, 'create').hooks).toEqual(hooks);
+		expect(withHarnessOptions(base, { hooks }, 'update').hooks).toEqual(hooks);
+	});
+
+	it('clears hooks with [] only when the node set them before', () => {
+		expect(withHarnessOptions(base, { hooks: [], managesHooks: true }, 'update').hooks).toEqual([]);
+		// Hooks configured outside n8n are kept: the field is omitted.
+		expect(withHarnessOptions(base, { hooks: [] }, 'update')).not.toHaveProperty('hooks');
+		expect(
+			withHarnessOptions(base, { hooks: [], managesHooks: true }, 'create'),
+		).not.toHaveProperty('hooks');
 	});
 });

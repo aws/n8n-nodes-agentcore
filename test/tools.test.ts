@@ -265,10 +265,12 @@ describe('configHash with harness options', () => {
 	it('keeps the 0.4.5 hash when the new options are unset', () => {
 		expect(configHash(base)).toBe(LEGACY);
 		expect(configHash({ ...base, truncation: undefined })).toBe(LEGACY);
+		expect(configHash({ ...base, hooks: [] })).toBe(LEGACY);
 		expect(configHash(typical)).toBe(LEGACY_TYPICAL);
 	});
 
 	it('changes when truncation is set', () => {
 		expect(configHash({ ...base, truncation: { strategy: 'none' } })).not.toBe(LEGACY);
+		expect(configHash({ ...base, hooks: [{ beforeInvocation: { name: 'g' } }] })).not.toBe(LEGACY);
 	});
 });

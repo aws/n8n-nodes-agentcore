@@ -32,6 +32,7 @@ import { buildSkillsArray } from './helpers/skills';
 import {
 	buildTruncation,
 	buildAllowedTools,
+	buildHooks,
 	parseSelectors,
 	syncTags,
 	parseTags,
@@ -72,6 +73,8 @@ interface HarnessRecord {
 	configHash: string;
 	/** Tags the node last applied; absent for harnesses recorded before tag sync. */
 	tags?: Record<string, string>;
+	/** True once the node has applied lifecycle hooks to this harness. */
+	managesHooks?: boolean;
 }
 interface NodeStaticData {
 	harnesses?: Record<string, HarnessRecord>;
@@ -317,6 +320,7 @@ async function runAgent(
 
 	const truncation = buildTruncation(provisioning.truncation as IDataObject | undefined);
 	const tags = parseTags(provisioning.tags);
+	const hooks = buildHooks(provisioning.lifecycleHooks as IDataObject | undefined);
 
 	const desiredHash = configHash({
 		model: cfg.modelConfig,
@@ -330,6 +334,7 @@ async function runAgent(
 		maxTokens: cfg.maxTokens,
 		timeoutSeconds: cfg.timeoutSeconds,
 		truncation,
+		hooks,
 	});
 
 	// Resolve harness: existing match, drift-update, or create.
@@ -420,7 +425,7 @@ async function runAgent(
 		maxIterations: cfg.maxIterations,
 		maxTokens: cfg.maxTokens,
 		timeoutSeconds: cfg.timeoutSeconds,
-		harnessOptions: { truncation, tags },
+		harnessOptions: { truncation, tags, hooks, managesHooks: record?.managesHooks },
 	};
 
 	if (!record) {
@@ -431,12 +436,15 @@ async function runAgent(
 			provisionInput,
 			desiredHash,
 		);
-		// Tags were sent on CreateHarness.
+		// Tags and hooks were sent on CreateHarness.
 		record.tags = tags ?? {};
+		record.managesHooks = hooks.length > 0;
 		staticData.harnesses![agentName] = record;
 	} else {
 		const previousTags = record.tags;
-		if (record.configHash !== desiredHash) {
+		const previousManagesHooks = record.managesHooks;
+		const updated = record.configHash !== desiredHash;
+		if (updated) {
 			record = await updateHarness(
 				controlClient,
 				record.harnessId,
@@ -445,6 +453,10 @@ async function runAgent(
 				desiredHash,
 			);
 		}
+		// Hooks are in the config hash, so an update applied the configured list
+		// (or [] if the node had set hooks before). After an update the node owns
+		// the hook list only if it set a non-empty one; without one, nothing changed.
+		record.managesHooks = updated ? hooks.length > 0 : previousManagesHooks;
 		// Tags are not part of the config hash: TagResource / UntagResource apply
 		// a change directly, without a multi-minute UpdateHarness.
 		record.tags = await syncTags(controlClient, record.arn, previousTags, tags);

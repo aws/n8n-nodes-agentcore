@@ -413,3 +413,85 @@ describe('lifecycle hook events in the output', () => {
 		expect(out).not.toHaveProperty('hookEvents');
 	});
 });
+
+describe('lifecycle hooks wiring', () => {
+	const LAMBDA = 'arn:aws:lambda:us-west-2:111122223333:function:policy';
+	const TOPIC = 'arn:aws:sns:us-west-2:111122223333:events';
+	const hooksField = {
+		hook: [
+			{ event: 'before_tool_call', name: 'policy', targetType: 'lambda', targetArn: LAMBDA },
+			{ event: 'after_invocation', name: 'audit', targetType: 'sns', targetArn: TOPIC },
+		],
+	};
+	const withHooks = (lifecycleHooks: unknown) => ({
+		provisioningOptions: { memoryMode: 'disabled', lifecycleHooks },
+	});
+	let fake: FakeAgentCore;
+	let staticData: IDataObject;
+	beforeEach(() => {
+		fake = new FakeAgentCore();
+		staticData = {};
+	});
+
+	it('sends hooks on CreateHarness, never on InvokeHarness', async () => {
+		await execute(fake, staticData, withHooks(hooksField));
+		const create = fake.mutations().find((r) => r.method === 'POST' && r.path === '/harnesses');
+		expect(create?.body?.hooks).toEqual([
+			{
+				beforeToolCall: {
+					name: 'policy',
+					target: { lambda: { arn: LAMBDA, failureMode: 'deny' } },
+				},
+			},
+			{ afterInvocation: { name: 'audit', target: { sns: { arn: TOPIC } } } },
+		]);
+		expect(fake.invokes()[0].body).not.toHaveProperty('hooks');
+	});
+
+	it('makes no harness mutation when hooks are unchanged', async () => {
+		await execute(fake, staticData, withHooks(hooksField));
+		fake.reset();
+		await execute(fake, staticData, withHooks(hooksField));
+		expect(fake.mutations()).toEqual([]);
+	});
+
+	it('removes hooks it set with hooks: [] when the field is cleared', async () => {
+		await execute(fake, staticData, withHooks(hooksField));
+		fake.reset();
+		await execute(fake, staticData, withHooks({}));
+		const patch = fake.mutations().find((r) => r.method === 'PATCH');
+		expect(patch?.body?.hooks).toEqual([]);
+
+		// Once cleared, a further unchanged run makes no call and sends nothing.
+		fake.reset();
+		await execute(fake, staticData, withHooks({}));
+		expect(fake.mutations()).toEqual([]);
+	});
+
+	it('keeps hooks configured outside n8n on an adopted harness', async () => {
+		// A harness that exists in AWS but not in this workflow's static data, e.g.
+		// opened in a new workflow. The node adopts it and updates it, but must not
+		// send hooks: [] and wipe hooks someone else configured.
+		fake.harness = {
+			harnessId: HARNESS_ID,
+			arn: ARN,
+			status: 'READY',
+			hooks: [{ beforeInvocation: { name: 'external' } }],
+		};
+		await execute(fake, staticData, withHooks({}));
+		const patch = fake.mutations().find((r) => r.method === 'PATCH');
+		expect(patch).toBeDefined();
+		expect(patch?.body).not.toHaveProperty('hooks');
+	});
+
+	it('rejects an invalid hook before calling AWS', async () => {
+		await expect(
+			execute(
+				fake,
+				staticData,
+				withHooks({ hook: [{ name: 'p', targetType: 'lambda', targetArn: TOPIC }] }),
+			),
+		).rejects.toThrow(/not a valid lambda ARN/);
+		expect(fake.requests).toEqual([]);
+	});
+});
