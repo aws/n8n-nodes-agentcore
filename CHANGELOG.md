@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **New node placements use AgentCore's managed defaults** (node `typeVersion` 3).
+  Version 3 leaves a blank Model ID or System Prompt out of the request, so the harness
+  applies AgentCore's current recommended model and its managed, task-oriented system
+  prompt, both of which AWS improves over time. Earlier releases always filled in
+  Claude Sonnet 4.6 and the one-line prompt "You are a helpful AI assistant.", which
+  replaced those defaults. Existing workflows keep node version 2 and behave exactly as
+  before; set a Model ID or System Prompt to pin either one. Clearing a System Prompt
+  that was previously set does not restore the managed prompt on an existing harness
+  (UpdateHarness keeps the stored value); use Force Recreate.
+
 ### Fixed
 
 - **Gateway tools with OAuth outbound auth failed on every invocation** (#111). The
@@ -89,6 +101,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `usage.cacheWriteInputTokens`, summed across model calls, when the model reports
   them.
 
+- **Lifecycle hook events in the output**: `hookEvents` lists each hook that fired
+  (`name`, `type`, and for Lambda hooks `decision` and `reason`), and
+  `stopReason: "hook_stopped"` is passed through when a hook stops the run. Useful
+  with harnesses whose hooks are configured outside n8n.
 - **Output shows what was applied** (#112): `allowedTools` (the effective list sent
   with the invocation), `tags` (Run Agent), and `harness.truncation`.
   `harness.builtInToolsAvailable` is `false` when the list leaves out every

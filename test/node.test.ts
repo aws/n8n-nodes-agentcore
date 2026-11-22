@@ -29,6 +29,8 @@ interface SentRequest {
 class FakeAgentCore {
 	requests: SentRequest[] = [];
 	harness?: IDataObject;
+	/** Extra stream events to emit before messageStop, e.g. hookEvent frames. */
+	extraEvents: Array<{ type: string; payload: unknown }> = [];
 
 	httpRequest = async (options: IDataObject) => {
 		const url = new URL(options.url as string);
@@ -46,6 +48,9 @@ class FakeAgentCore {
 					buildFrame(
 						{ ':message-type': 'event', ':event-type': 'contentBlockDelta' },
 						{ contentBlockIndex: 0, delta: { text: 'ok' } },
+					),
+					...this.extraEvents.map((e) =>
+						buildFrame({ ':message-type': 'event', ':event-type': e.type }, e.payload),
 					),
 					buildFrame(
 						{ ':message-type': 'event', ':event-type': 'messageStop' },
@@ -115,7 +120,12 @@ const BASE_PARAMS: IDataObject = {
 	provisioningOptions: { memoryMode: 'disabled' },
 };
 
-async function execute(fake: FakeAgentCore, staticData: IDataObject, params: IDataObject) {
+async function execute(
+	fake: FakeAgentCore,
+	staticData: IDataObject,
+	params: IDataObject,
+	typeVersion = 2,
+) {
 	const p = { ...BASE_PARAMS, ...params };
 	const ctx = {
 		getInputData: () => [{ json: {} }],
@@ -132,7 +142,7 @@ async function execute(fake: FakeAgentCore, staticData: IDataObject, params: IDa
 		getNode: () => ({
 			name: 'AgentCore',
 			type: 'agentCoreHarness',
-			typeVersion: 2,
+			typeVersion,
 			parameters: {},
 		}),
 		continueOnFail: () => false,
@@ -318,5 +328,88 @@ describe('Invoke Existing wiring', () => {
 		const invokeIndex = fake.requests.findIndex((r) => r.path === '/harnesses/invoke');
 		expect(fake.requests.slice(0, invokeIndex).filter((r) => r.method === 'GET')).toEqual([]);
 		expect(fake.invokes()[0].body).not.toHaveProperty('allowedTools');
+	});
+});
+
+describe('managed defaults by node version', () => {
+	let fake: FakeAgentCore;
+	beforeEach(() => {
+		fake = new FakeAgentCore();
+	});
+	const blank = { modelId: '', systemPrompt: '' };
+	const create = () => fake.mutations().find((r) => r.method === 'POST' && r.path === '/harnesses');
+
+	it('version 3 omits a blank model and system prompt so AgentCore applies its managed defaults', async () => {
+		await execute(fake, {}, blank, 3);
+		expect(create()?.body).not.toHaveProperty('model');
+		expect(create()?.body).not.toHaveProperty('systemPrompt');
+		expect(fake.invokes()[0].body).not.toHaveProperty('model');
+	});
+
+	it('version 2 keeps the pinned model and one-line prompt, unchanged from 0.4.x', async () => {
+		await execute(fake, {}, blank, 2);
+		expect(create()?.body?.model).toEqual({
+			bedrockModelConfig: { modelId: 'global.anthropic.claude-sonnet-4-6' },
+		});
+		expect(create()?.body?.systemPrompt).toEqual([{ text: 'You are a helpful AI assistant.' }]);
+	});
+
+	it('version 3 still sends an explicit model and system prompt', async () => {
+		await execute(
+			fake,
+			{},
+			{ modelId: 'us.anthropic.claude-sonnet-5-5', systemPrompt: 'Be terse.' },
+			3,
+		);
+		expect(create()?.body?.model).toEqual({
+			bedrockModelConfig: { modelId: 'us.anthropic.claude-sonnet-5-5' },
+		});
+		expect(create()?.body?.systemPrompt).toEqual([{ text: 'Be terse.' }]);
+	});
+
+	it('version 3 never sends an empty prompt on update', async () => {
+		// Omitting systemPrompt on UpdateHarness keeps the stored value.
+		const staticData = {};
+		await execute(fake, staticData, blank, 3);
+		fake.reset();
+		await execute(fake, staticData, { ...blank, additionalOptions: { maxIterations: 20 } }, 3);
+		const patch = fake.mutations().find((r) => r.method === 'PATCH');
+		expect(patch?.body?.maxIterations).toBe(20);
+		expect(patch?.body).not.toHaveProperty('systemPrompt');
+	});
+});
+
+describe('lifecycle hook events in the output', () => {
+	it('reports hookEvent entries from the stream, in order', async () => {
+		const fake = new FakeAgentCore();
+		fake.extraEvents = [
+			{
+				type: 'hookEvent',
+				payload: {
+					hookEventId: 'h1',
+					name: 'policy',
+					type: 'before_tool_call',
+					decision: 'deny',
+					reason: 'Over limit.',
+				},
+			},
+			{ type: 'hookEvent', payload: { hookEventId: 'h2', name: 'audit', type: 'after_tool_call' } },
+		];
+		const out = await execute(fake, {}, {});
+		expect(out.hookEvents).toEqual([
+			{
+				hookEventId: 'h1',
+				name: 'policy',
+				type: 'before_tool_call',
+				decision: 'deny',
+				reason: 'Over limit.',
+			},
+			{ hookEventId: 'h2', name: 'audit', type: 'after_tool_call' },
+		]);
+	});
+
+	it('omits hookEvents when no hook fired', async () => {
+		const out = await execute(new FakeAgentCore(), {}, {});
+		expect(out).not.toHaveProperty('hookEvents');
 	});
 });

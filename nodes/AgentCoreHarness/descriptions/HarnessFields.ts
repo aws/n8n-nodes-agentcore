@@ -75,7 +75,7 @@ export const harnessFields: INodeProperties[] = [
 		default: '',
 		placeholder: 'global.anthropic.claude-sonnet-4-6',
 		description:
-			'Model ID. Bedrock: e.g. global.anthropic.claude-sonnet-4-6. OpenAI: e.g. gpt-5.4. Gemini: e.g. gemini-2.5-pro. LiteLLM: provider-prefixed, e.g. gemini/gemini-2.5-pro. In Run Agent mode defaults to Claude Sonnet 4.6 on Bedrock when blank. When a harness ARN is set, overrides the harness model for this invocation only — leave blank to use the harness model as-is.',
+			'Model ID. Bedrock: e.g. global.anthropic.claude-sonnet-4-6. OpenAI: e.g. gpt-5.4. Gemini: e.g. gemini-2.5-pro. LiteLLM: provider-prefixed, e.g. gemini/gemini-2.5-pro. Leave blank in Run Agent mode to use the current AgentCore recommended model, which AWS updates over time; set a model ID to keep it fixed (node version 2 placements default to Claude Sonnet 4.6). When a harness ARN is set, overrides the harness model for this invocation only — leave blank to use the harness model as-is.',
 	},
 	{
 		displayName: 'Model Options',
@@ -167,7 +167,7 @@ export const harnessFields: INodeProperties[] = [
 		typeOptions: { rows: 4 },
 		default: '',
 		description:
-			'Instructions that define how the agent behaves. In Run Agent mode, defaults to a generic assistant prompt when left blank. When a harness ARN is set, this overrides the harness system prompt for this invocation only — leave blank to use the harness prompt as-is.',
+			'Instructions that define how the agent behaves. Leave blank in Run Agent mode to use the managed AgentCore task-oriented system prompt, which AWS improves over time (node version 2 placements use a one-line generic prompt). When a harness ARN is set, this overrides the harness system prompt for this invocation only — leave blank to use the harness prompt as-is.',
 	},
 	{
 		displayName: 'Prompt',

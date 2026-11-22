@@ -81,8 +81,15 @@ interface NodeStaticData {
 // empty so that, in ARN/invoke mode, a blank field sends no override. Run mode
 // applies these defaults in code instead, preserving the prior behavior.
 // v0.2: the service default model is Claude Sonnet 4.6 on Bedrock.
-const DEFAULT_MODEL_ID = 'global.anthropic.claude-sonnet-4-6';
-const DEFAULT_SYSTEM_PROMPT = 'You are a helpful AI assistant.';
+/**
+ * Run Agent fallbacks for node version 2 only. From version 3 a blank Model ID
+ * or System Prompt is omitted, so the harness applies AgentCore's managed
+ * defaults: the current recommended model and the task-oriented system prompt,
+ * which AWS improves over time. Version 2 placements keep these fixed values so
+ * existing workflows behave exactly as before.
+ */
+const V2_DEFAULT_MODEL_ID = 'global.anthropic.claude-sonnet-4-6';
+const V2_DEFAULT_SYSTEM_PROMPT = 'You are a helpful AI assistant.';
 
 /** Bundle of the model/config field values shared by run + invoke paths. */
 interface ResolvedConfig {
@@ -108,7 +115,8 @@ export class AgentCoreHarness implements INodeType {
 		name: 'agentCoreHarness',
 		icon: 'file:agentcore.svg',
 		group: ['transform'],
-		version: 2,
+		version: [2, 3],
+		defaultVersion: 3,
 		subtitle:
 			'={{ $parameter["harnessArn"] ? "Invoke Existing harness" : ("Run Agent" + ($parameter["agentName"] ? ": " + $parameter["agentName"] : "")) }}',
 		description:
@@ -207,7 +215,8 @@ export class AgentCoreHarness implements INodeType {
 
 /**
  * Reads the model / tools / skills / limits fields shared by run and invoke.
- * `applyDefaults` substitutes the run-mode model/system-prompt fallbacks; in
+ * `applyDefaults` substitutes the run-mode model/system-prompt fallbacks (node
+ * version 2 only; version 3 leaves them blank for the managed defaults); in
  * invoke mode a blank field stays blank so no override is sent.
  */
 function resolveConfig(
@@ -217,13 +226,14 @@ function resolveConfig(
 ): ResolvedConfig {
 	const provider = ctx.getNodeParameter('modelProvider', itemIndex, 'bedrock') as ModelProvider;
 	const modelIdRaw = (ctx.getNodeParameter('modelId', itemIndex, '') as string).trim();
-	const modelId = applyDefaults && !modelIdRaw ? DEFAULT_MODEL_ID : modelIdRaw;
+	const pinnedDefaults = applyDefaults && ctx.getNode().typeVersion < 3;
+	const modelId = pinnedDefaults && !modelIdRaw ? V2_DEFAULT_MODEL_ID : modelIdRaw;
 	const modelOptions = ctx.getNodeParameter('modelOptions', itemIndex, {}) as IDataObject;
 	const modelConfig = buildModelConfig({ provider, modelId, options: modelOptions });
 
 	const systemPromptRaw = ctx.getNodeParameter('systemPrompt', itemIndex, '') as string;
 	const systemPrompt =
-		applyDefaults && !systemPromptRaw.trim() ? DEFAULT_SYSTEM_PROMPT : systemPromptRaw;
+		pinnedDefaults && !systemPromptRaw.trim() ? V2_DEFAULT_SYSTEM_PROMPT : systemPromptRaw;
 
 	// The Add Tools / Add Skills toggles gate the fields in the UI. n8n still
 	// returns a hidden field's stored value, so we honor the toggle here too:
@@ -504,6 +514,7 @@ async function runAgent(
 			toolUses: result.toolUses,
 			usage: result.usage,
 			latencyMs: result.latencyMs,
+			...(result.hookEvents.length > 0 ? { hookEvents: result.hookEvents } : {}),
 			...(record.tags && Object.keys(record.tags).length > 0 ? { tags: record.tags } : {}),
 			...versionEndpointOutput,
 		},
@@ -575,6 +586,7 @@ async function invokeExisting(
 			toolUses: result.toolUses,
 			usage: result.usage,
 			latencyMs: result.latencyMs,
+			...(result.hookEvents.length > 0 ? { hookEvents: result.hookEvents } : {}),
 		},
 		allowedTools,
 	);
@@ -1013,7 +1025,7 @@ async function createHarness(
 	const payload: IDataObject = {
 		harnessName: agentName,
 		executionRoleArn,
-		systemPrompt: [{ text: input.systemPrompt }],
+		...systemPromptField(input.systemPrompt),
 	};
 	if (input.modelConfig) payload.model = input.modelConfig;
 	if (input.tools.length > 0) payload.tools = input.tools;
@@ -1055,7 +1067,7 @@ async function updateHarness(
 	desiredHash: string,
 ): Promise<HarnessRecord> {
 	const payload: IDataObject = {
-		systemPrompt: [{ text: input.systemPrompt }],
+		...systemPromptField(input.systemPrompt),
 	};
 	if (input.modelConfig) payload.model = input.modelConfig;
 	if (input.tools.length > 0) payload.tools = input.tools;
@@ -1137,6 +1149,16 @@ function describeAllowedTools(
 		allowedTools,
 		...(harness ? { harness: { ...harness, builtInToolsAvailable: allowsBuiltIns } } : {}),
 	};
+}
+
+/**
+ * `systemPrompt` for Create/UpdateHarness. A blank prompt is omitted so the
+ * harness uses AgentCore's managed system prompt (node version 3). On update,
+ * omission keeps the stored prompt, so clearing a prompt that was set earlier
+ * does not restore the managed one; Force Recreate does.
+ */
+function systemPromptField(systemPrompt: string): IDataObject {
+	return systemPrompt.trim() ? { systemPrompt: [{ text: systemPrompt }] } : {};
 }
 
 interface InvokePayloadInput {

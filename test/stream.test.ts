@@ -111,4 +111,32 @@ describe('consumeStream', () => {
 		);
 		expect(result.usage).toEqual({ inputTokens: 5, outputTokens: 1 });
 	});
+	it('collects hookEvent entries and passes hook_stopped through', async () => {
+		const result = await consumeStream(
+			gen([
+				{
+					hookEvent: {
+						hookEventId: 'h1',
+						name: 'gate',
+						type: 'before_invocation',
+						decision: 'deny',
+						reason: 'Blocked.',
+					},
+				},
+				{ messageStop: { stopReason: 'hook_stopped' } },
+				{ hookEvent: { hookEventId: 'h2', name: 'notify', type: 'after_invocation', extra: 1 } },
+			]),
+		);
+		expect(result.stopReason).toBe('hook_stopped');
+		expect(result.hookEvents).toEqual([
+			{
+				hookEventId: 'h1',
+				name: 'gate',
+				type: 'before_invocation',
+				decision: 'deny',
+				reason: 'Blocked.',
+			},
+			{ hookEventId: 'h2', name: 'notify', type: 'after_invocation' },
+		]);
+	});
 });

@@ -11,6 +11,8 @@
  *                        cacheWriteInputTokens? }, metrics: { latencyMs } }
  *                        (one per model call: a run with tool use emits several,
  *                        so usage and latency are summed across them)
+ *   hookEvent         -> { hookEventId, name, type, decision?, reason? } (one per lifecycle
+ *                        hook that fires; decision/reason only for Lambda targets)
  *   internalServerException / validationException / runtimeClientError -> error envelope
  *
  * Tool-use input arrives as a stream of partial-JSON string fragments in
@@ -23,6 +25,17 @@ export interface ToolUse {
 	toolUseId?: string;
 	/** Parsed tool input (best-effort JSON parse of the accumulated fragments). */
 	input?: unknown;
+}
+
+/** A lifecycle hook that fired during the invocation, as reported in the stream. */
+export interface HookEvent {
+	hookEventId?: string;
+	name?: string;
+	/** before_invocation | before_tool_call | after_tool_call | after_invocation */
+	type?: string;
+	/** allow | deny. Present only for Lambda targets, which are the only blocking hooks. */
+	decision?: string;
+	reason?: string;
 }
 
 export interface InvokeResult {
@@ -38,6 +51,8 @@ export interface InvokeResult {
 		cacheWriteInputTokens?: number;
 	};
 	latencyMs?: number;
+	/** Lifecycle hooks that fired, in stream order. */
+	hookEvents: HookEvent[];
 	error?: string;
 }
 
@@ -45,6 +60,7 @@ export async function consumeStream(stream: AsyncIterable<any>): Promise<InvokeR
 	const result: InvokeResult = {
 		text: '',
 		toolUses: [],
+		hookEvents: [],
 	};
 
 	// Tool-use blocks indexed by contentBlockIndex so we can attach streamed
@@ -100,6 +116,13 @@ export async function consumeStream(stream: AsyncIterable<any>): Promise<InvokeR
 			if (meta.metrics?.latencyMs !== undefined) {
 				result.latencyMs = (result.latencyMs ?? 0) + meta.metrics.latencyMs;
 			}
+		} else if (event.hookEvent) {
+			const h = event.hookEvent;
+			const hookEvent: HookEvent = {};
+			for (const key of ['hookEventId', 'name', 'type', 'decision', 'reason'] as const) {
+				if (typeof h[key] === 'string') hookEvent[key] = h[key];
+			}
+			result.hookEvents.push(hookEvent);
 		} else if (event.internalServerException) {
 			throw new Error(
 				`AgentCore internal server error: ${errorText(event.internalServerException)}`,
