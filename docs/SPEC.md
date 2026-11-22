@@ -137,7 +137,7 @@ A single operation. The **Harness ARN** field is the mode discriminator: blank â
 2. Look up existing harness in workflow static data
 3. If absent, query AWS via `ListHarnesses` to find one matching the agent name (handles workflow imports, n8n restarts, lost local state)
 4. If found: reuse if config hash matches; `UpdateHarness` if hash differs (each update mints a new immutable harness version)
-5. If not found: `CreateHarness`, poll `GetHarness` until READY (~30s)
+5. If not found: `CreateHarness`, poll `GetHarness` until READY (a few minutes; measured about 4 minutes in us-west-2, November 2026)
 6. Optionally manage versions/endpoints (list versions, create/pin a named endpoint)
 7. `GetHarness` to summarize what was provisioned (memory ARN, model, version) for the output
 8. `InvokeHarness` (SigV4 path) or Bearer path, both via `this.helpers.httpRequest`, streaming, accumulate response
