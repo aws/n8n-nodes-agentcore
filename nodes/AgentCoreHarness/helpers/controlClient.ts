@@ -50,6 +50,30 @@ export class ControlClient {
 		});
 	}
 
+	/**
+	 * TagResource: adds or overwrites tags on the harness. The ARN is a single
+	 * path label, so its `/` is percent-encoded here; the signer then encodes the
+	 * path once more, as SigV4 requires for non-S3 services.
+	 */
+	async tagResource(resourceArn: string, tags: Record<string, string>): Promise<any> {
+		return controlRequest(this.config, {
+			method: 'POST',
+			path: `/tags/${encodeURIComponent(resourceArn)}`,
+			body: { tags },
+			// TagResourceRequest has no clientToken member; tagging is idempotent.
+			omitClientToken: true,
+		});
+	}
+
+	/** UntagResource: removes the given tag keys (`tagKeys` repeated in the query). */
+	async untagResource(resourceArn: string, tagKeys: string[]): Promise<any> {
+		return controlRequest(this.config, {
+			method: 'DELETE',
+			path: `/tags/${encodeURIComponent(resourceArn)}`,
+			query: { tagKeys },
+		});
+	}
+
 	async deleteHarness(harnessId: string, deleteManagedMemory = false): Promise<any> {
 		return controlRequest(this.config, {
 			method: 'DELETE',

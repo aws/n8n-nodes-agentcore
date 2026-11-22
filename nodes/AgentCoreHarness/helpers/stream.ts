@@ -7,7 +7,8 @@
  *   contentBlockStart -> { contentBlockIndex, start: { toolUse: { name, toolUseId } } }
  *   contentBlockDelta -> { contentBlockIndex, delta: { text } | { toolUse: { input } } }
  *   messageStop       -> { stopReason: string }
- *   metadata          -> { usage: { inputTokens, outputTokens }, metrics: { latencyMs } }
+ *   metadata          -> { usage: { inputTokens, outputTokens, cacheReadInputTokens?,
+ *                        cacheWriteInputTokens? }, metrics: { latencyMs } }
  *                        (one per model call: a run with tool use emits several,
  *                        so usage and latency are summed across them)
  *   internalServerException / validationException / runtimeClientError -> error envelope
@@ -28,7 +29,14 @@ export interface InvokeResult {
 	text: string;
 	toolUses: ToolUse[];
 	stopReason?: string;
-	usage?: { inputTokens?: number; outputTokens?: number };
+	usage?: {
+		inputTokens?: number;
+		outputTokens?: number;
+		/** Prompt-cache reads, present when the model reports them (Bedrock converse_stream). */
+		cacheReadInputTokens?: number;
+		/** Prompt-cache writes, present when the model reports them. */
+		cacheWriteInputTokens?: number;
+	};
 	latencyMs?: number;
 	error?: string;
 }
@@ -76,10 +84,18 @@ export async function consumeStream(stream: AsyncIterable<any>): Promise<InvokeR
 		} else if (event.metadata) {
 			const meta = event.metadata;
 			if (meta.usage) {
-				result.usage = {
+				const usage: NonNullable<InvokeResult['usage']> = {
 					inputTokens: (result.usage?.inputTokens ?? 0) + (meta.usage.inputTokens ?? 0),
 					outputTokens: (result.usage?.outputTokens ?? 0) + (meta.usage.outputTokens ?? 0),
 				};
+				// Cache fields are summed like the others, but only appear once a
+				// model call reports them, so the output shape is unchanged otherwise.
+				for (const key of ['cacheReadInputTokens', 'cacheWriteInputTokens'] as const) {
+					if (meta.usage[key] !== undefined || result.usage?.[key] !== undefined) {
+						usage[key] = (result.usage?.[key] ?? 0) + (meta.usage[key] ?? 0);
+					}
+				}
+				result.usage = usage;
 			}
 			if (meta.metrics?.latencyMs !== undefined) {
 				result.latencyMs = (result.latencyMs ?? 0) + meta.metrics.latencyMs;

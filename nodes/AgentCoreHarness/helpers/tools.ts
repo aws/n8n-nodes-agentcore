@@ -19,14 +19,13 @@ export interface ToolConfig {
  *   - agentcore_browser
  *   - agentcore_code_interpreter
  *   - agentcore_gateway        (+ optional OAuth outbound auth)
- *   - remote_mcp
+ *   - remote_mcp               (+ optional IAM/SigV4 outbound auth)
  *   - inline_function          (client-side execution; round-trips via toolResult)
  *
- * Note: `agentcore_web_search` is described in the developer guide but is not yet
- * accepted by the Create/Update/Invoke Harness APIs (the service enum rejects it
- * with a ValidationException), so it is intentionally not offered here. Web
- * search can still be added today via a Remote MCP search server. Re-add the
- * managed type once the harness API enum includes it.
+ * Web search is not a separate tool type. AgentCore delivers it as the Web
+ * Search (or Web Answer) connector behind an AgentCore Gateway, attached to the
+ * harness as an `agentcore_gateway` tool with the default AWS IAM outbound auth.
+ * There is no `agentcore_web_search` type in the harness API.
  */
 export function buildToolsArray(toolsUi: IDataObject | undefined): ToolConfig[] {
 	if (!toolsUi || !toolsUi.tool) {
@@ -80,6 +79,8 @@ export function buildToolsArray(toolsUi: IDataObject | undefined): ToolConfig[] 
 				if (Object.keys(headers).length > 0) {
 					remoteMcp.headers = headers;
 				}
+				const outboundAuth = buildRemoteMcpOutboundAuth(uiTool);
+				if (outboundAuth) remoteMcp.outboundAuth = outboundAuth;
 				tools.push({
 					type: 'remote_mcp',
 					name: (uiTool.name as string) || 'remote_mcp',
@@ -125,20 +126,71 @@ function buildGatewayOutboundAuth(uiTool: IDataObject): IDataObject | undefined 
 		case 'none':
 			return { none: {} };
 		case 'oauth': {
-			const providerName = (uiTool.oauthProviderName as string) || '';
-			if (!providerName) {
+			// `oauth` is an OAuthCredentialProvider directly: `providerArn` and `scopes`
+			// are both required. Releases before 0.4.6 sent
+			// `{ oauthCredentialProvider: { credentialProviderName } }`, which the
+			// service rejects, and asked for a provider name in `oauthProviderName`.
+			// That legacy field is still read so a saved ARN keeps working, but a
+			// saved name gets an error that explains the change.
+			const providerArn = (
+				(uiTool.oauthProviderArn as string) ||
+				(uiTool.oauthProviderName as string) ||
+				''
+			).trim();
+			if (!providerArn) {
 				throw new ApplicationError(
-					'Gateway OAuth outbound auth requires a Credential Provider Name.',
+					'Gateway OAuth outbound auth requires an OAuth Credential Provider ARN.',
 				);
 			}
-			const oauthCredentialProvider: IDataObject = { credentialProviderName: providerName };
+			if (!OAUTH_PROVIDER_ARN.test(providerArn)) {
+				throw new ApplicationError(
+					`Gateway OAuth outbound auth needs the credential provider ARN, not its name: "${providerArn}". ` +
+						'Expected arn:aws:bedrock-agentcore:<region>:<account-id>:token-vault/<vault>/oauth2credentialprovider/<name>.',
+				);
+			}
 			const scopes = splitScopes(uiTool.oauthScopes as string);
-			if (scopes.length > 0) oauthCredentialProvider.scopes = scopes;
-			return { oauth: { oauthCredentialProvider } };
+			if (scopes.length === 0) {
+				throw new ApplicationError(
+					'Gateway OAuth outbound auth requires at least one OAuth scope.',
+				);
+			}
+			return { oauth: { providerArn, scopes } };
 		}
 		case 'awsIam':
 		default:
 			// SigV4 is the default when omitted; don't send it.
+			return undefined;
+	}
+}
+
+/** AgentCore Identity OAuth2 credential provider ARN, any partition. */
+const OAUTH_PROVIDER_ARN =
+	/^arn:aws[a-z-]*:bedrock-agentcore:[a-z0-9-]+:\d{12}:token-vault\/[^/]+\/oauth2credentialprovider\/[^/]+$/;
+
+/**
+ * Builds HarnessRemoteMcpOutboundAuth for a remote MCP tool:
+ *   { awsIam: { service, region? } }  the harness SigV4-signs each MCP request
+ *                                     with its execution role
+ * Returns undefined for the default (headers only, if any), so the field is omitted
+ * and existing tool configs hash and serialize exactly as before.
+ */
+function buildRemoteMcpOutboundAuth(uiTool: IDataObject): IDataObject | undefined {
+	const mode = (uiTool.mcpOutboundAuth as string) || 'headers';
+	switch (mode) {
+		case 'awsIam': {
+			const service = ((uiTool.mcpIamService as string) || '').trim();
+			if (!service) {
+				throw new ApplicationError(
+					'Remote MCP IAM auth requires the SigV4 signing service name, for example "lambda" for a Lambda function URL.',
+				);
+			}
+			const awsIam: IDataObject = { service };
+			const region = ((uiTool.mcpIamRegion as string) || '').trim();
+			if (region) awsIam.region = region;
+			return { awsIam };
+		}
+		case 'headers':
+		default:
 			return undefined;
 	}
 }
@@ -210,8 +262,9 @@ export function configHash(input: {
 	maxIterations?: number;
 	maxTokens?: number;
 	timeoutSeconds?: number;
+	truncation?: IDataObject;
 }): string {
-	const normalized = JSON.stringify({
+	const fields: Record<string, unknown> = {
 		model: input.model ?? null,
 		systemPrompt: input.systemPrompt,
 		tools: input.tools.slice().sort((a, b) => a.name.localeCompare(b.name)),
@@ -222,6 +275,10 @@ export function configHash(input: {
 		maxIterations: input.maxIterations ?? null,
 		maxTokens: input.maxTokens ?? null,
 		timeoutSeconds: input.timeoutSeconds ?? null,
-	});
+	};
+	// Fields added after 0.4.x are hashed only when set, so a workflow that does
+	// not use them keeps its existing hash and does not trigger an UpdateHarness.
+	if (input.truncation) fields.truncation = input.truncation;
+	const normalized = JSON.stringify(fields);
 	return createHash('sha256').update(normalized).digest('hex');
 }

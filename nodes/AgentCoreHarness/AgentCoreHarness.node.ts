@@ -29,6 +29,15 @@ import {
 	type FilesystemMount,
 } from './helpers/environment';
 import { buildSkillsArray } from './helpers/skills';
+import {
+	buildTruncation,
+	buildAllowedTools,
+	parseSelectors,
+	syncTags,
+	parseTags,
+	withHarnessOptions,
+	type HarnessOptions,
+} from './helpers/harnessOptions';
 import { invokeWithBearer } from './helpers/oauth';
 import {
 	listHarnessVersions,
@@ -61,6 +70,8 @@ interface HarnessRecord {
 	harnessId: string;
 	arn: string;
 	configHash: string;
+	/** Tags the node last applied; absent for harnesses recorded before tag sync. */
+	tags?: Record<string, string>;
 }
 interface NodeStaticData {
 	harnesses?: Record<string, HarnessRecord>;
@@ -82,6 +93,10 @@ interface ResolvedConfig {
 	maxIterations?: number;
 	maxTokens?: number;
 	timeoutSeconds?: number;
+	/** Built-in tools to allow; undefined when the option was not added (no restriction). */
+	builtInTools?: string[];
+	/** Extra allowed-tool selectors, for example `@my-mcp-server/read_*`. */
+	toolSelectors: string;
 	actorId: string;
 	qualifier: string;
 	runtimeUserId: string;
@@ -231,6 +246,10 @@ function resolveConfig(
 		maxIterations: additional.maxIterations as number | undefined,
 		maxTokens: additional.maxTokens as number | undefined,
 		timeoutSeconds: additional.timeoutSeconds as number | undefined,
+		builtInTools: Array.isArray(additional.allowedBuiltInTools)
+			? (additional.allowedBuiltInTools as string[])
+			: undefined,
+		toolSelectors: (additional.additionalToolSelectors as string) || '',
 		actorId: (additional.actorId as string) || '',
 		qualifier: ((additional.qualifier as string) || '').trim(),
 		runtimeUserId: ((additional.runtimeUserId as string) || '').trim(),
@@ -286,6 +305,9 @@ async function runAgent(
 	}
 	validateExecutionRoleArn(executionRoleArn);
 
+	const truncation = buildTruncation(provisioning.truncation as IDataObject | undefined);
+	const tags = parseTags(provisioning.tags);
+
 	const desiredHash = configHash({
 		model: cfg.modelConfig,
 		systemPrompt: cfg.systemPrompt,
@@ -297,6 +319,7 @@ async function runAgent(
 		maxIterations: cfg.maxIterations,
 		maxTokens: cfg.maxTokens,
 		timeoutSeconds: cfg.timeoutSeconds,
+		truncation,
 	});
 
 	// Resolve harness: existing match, drift-update, or create.
@@ -387,6 +410,7 @@ async function runAgent(
 		maxIterations: cfg.maxIterations,
 		maxTokens: cfg.maxTokens,
 		timeoutSeconds: cfg.timeoutSeconds,
+		harnessOptions: { truncation, tags },
 	};
 
 	if (!record) {
@@ -397,15 +421,23 @@ async function runAgent(
 			provisionInput,
 			desiredHash,
 		);
+		// Tags were sent on CreateHarness.
+		record.tags = tags ?? {};
 		staticData.harnesses![agentName] = record;
-	} else if (record.configHash !== desiredHash) {
-		record = await updateHarness(
-			controlClient,
-			record.harnessId,
-			record.arn,
-			provisionInput,
-			desiredHash,
-		);
+	} else {
+		const previousTags = record.tags;
+		if (record.configHash !== desiredHash) {
+			record = await updateHarness(
+				controlClient,
+				record.harnessId,
+				record.arn,
+				provisionInput,
+				desiredHash,
+			);
+		}
+		// Tags are not part of the config hash: TagResource / UntagResource apply
+		// a change directly, without a multi-minute UpdateHarness.
+		record.tags = await syncTags(controlClient, record.arn, previousTags, tags);
 		staticData.harnesses![agentName] = record;
 	}
 
@@ -424,12 +456,20 @@ async function runAgent(
 	const sessionId = resolveSessionId(sessionInput);
 	const messages = buildMessages(ctx, itemIndex, prompt);
 
+	// Sent per invocation (never on the harness), so changing it is instant.
+	const allowedTools = buildAllowedTools({
+		builtIns: cfg.builtInTools,
+		extraSelectors: cfg.toolSelectors,
+		configuredToolNames: cfg.tools.map((t) => t.name),
+	});
+
 	const invokePayload = buildInvokePayload({
 		harnessArn: record.arn,
 		runtimeSessionId: sessionId,
 		messages,
 		modelConfig: cfg.modelConfig,
 		skills: cfg.skills,
+		allowedTools,
 		actorId: cfg.actorId,
 		qualifier: cfg.qualifier,
 		maxIterations: cfg.maxIterations,
@@ -445,26 +485,30 @@ async function runAgent(
 		payload: invokePayload,
 	});
 
-	return {
-		operation: 'run',
-		agentName,
-		harnessId: record.harnessId,
-		harnessArn: record.arn,
-		sessionId,
-		// "generated" means the node created a fresh session this run (Session ID
-		// left blank) — i.e. this is a NEW conversation and prior turns are not
-		// recalled. "provided" means the user supplied a stable Session ID, so the
-		// conversation continues. See the Session ID field help.
-		sessionSource: sessionInput ? 'provided' : 'generated',
-		...(cfg.actorId ? { actorId: cfg.actorId } : {}),
-		...(harnessSummary ? { harness: harnessSummary } : {}),
-		response: result.text,
-		stopReason: result.stopReason,
-		toolUses: result.toolUses,
-		usage: result.usage,
-		latencyMs: result.latencyMs,
-		...versionEndpointOutput,
-	};
+	return describeAllowedTools(
+		{
+			operation: 'run',
+			agentName,
+			harnessId: record.harnessId,
+			harnessArn: record.arn,
+			sessionId,
+			// "generated" means the node created a fresh session this run (Session ID
+			// left blank) — i.e. this is a NEW conversation and prior turns are not
+			// recalled. "provided" means the user supplied a stable Session ID, so the
+			// conversation continues. See the Session ID field help.
+			sessionSource: sessionInput ? 'provided' : 'generated',
+			...(cfg.actorId ? { actorId: cfg.actorId } : {}),
+			...(harnessSummary ? { harness: harnessSummary } : {}),
+			response: result.text,
+			stopReason: result.stopReason,
+			toolUses: result.toolUses,
+			usage: result.usage,
+			latencyMs: result.latencyMs,
+			...(record.tags && Object.keys(record.tags).length > 0 ? { tags: record.tags } : {}),
+			...versionEndpointOutput,
+		},
+		allowedTools,
+	);
 }
 
 /**
@@ -488,6 +532,8 @@ async function invokeExisting(
 	const sessionId = resolveSessionId(sessionInput);
 	const messages = buildMessages(ctx, itemIndex, prompt);
 
+	const allowedTools = await resolveInvokeExistingAllowedTools(controlClient, harnessArn, cfg);
+
 	const invokePayload = buildInvokePayload({
 		harnessArn,
 		runtimeSessionId: sessionId,
@@ -496,6 +542,7 @@ async function invokeExisting(
 		systemPrompt: cfg.systemPrompt.trim() ? cfg.systemPrompt : undefined,
 		tools: cfg.tools.length > 0 ? cfg.tools : undefined,
 		skills: cfg.skills,
+		allowedTools,
 		actorId: cfg.actorId || undefined,
 		qualifier: cfg.qualifier,
 		maxIterations: cfg.maxIterations,
@@ -515,19 +562,22 @@ async function invokeExisting(
 	// Uses control-plane GetHarness, which is SigV4 even on the OAuth invoke path.
 	const harnessSummary = await getHarnessSummary(controlClient, harnessIdFromArn(harnessArn));
 
-	return {
-		operation: 'invokeExisting',
-		harnessArn,
-		sessionId,
-		sessionSource: sessionInput ? 'provided' : 'generated',
-		...(cfg.actorId ? { actorId: cfg.actorId } : {}),
-		...(harnessSummary ? { harness: harnessSummary } : {}),
-		response: result.text,
-		stopReason: result.stopReason,
-		toolUses: result.toolUses,
-		usage: result.usage,
-		latencyMs: result.latencyMs,
-	};
+	return describeAllowedTools(
+		{
+			operation: 'invokeExisting',
+			harnessArn,
+			sessionId,
+			sessionSource: sessionInput ? 'provided' : 'generated',
+			...(cfg.actorId ? { actorId: cfg.actorId } : {}),
+			...(harnessSummary ? { harness: harnessSummary } : {}),
+			response: result.text,
+			stopReason: result.stopReason,
+			toolUses: result.toolUses,
+			usage: result.usage,
+			latencyMs: result.latencyMs,
+		},
+		allowedTools,
+	);
 }
 
 /* ----- invoke dispatch (SigV4 vs OAuth Bearer) ----- */
@@ -904,6 +954,7 @@ function summarizeHarness(h: any): IDataObject {
 	}
 	summary.builtInToolsAvailable = true;
 	if (Array.isArray(h.skills)) summary.skillCount = h.skills.length;
+	if (h.truncation?.strategy) summary.truncation = h.truncation;
 
 	return summary;
 }
@@ -949,6 +1000,7 @@ interface ProvisionInput {
 	maxIterations?: number;
 	maxTokens?: number;
 	timeoutSeconds?: number;
+	harnessOptions: HarnessOptions;
 }
 
 async function createHarness(
@@ -973,7 +1025,9 @@ async function createHarness(
 	if (input.maxTokens !== undefined) payload.maxTokens = input.maxTokens;
 	if (input.timeoutSeconds !== undefined) payload.timeoutSeconds = input.timeoutSeconds;
 
-	const response = await controlClient.createHarness(payload);
+	const response = await controlClient.createHarness(
+		withHarnessOptions(payload, input.harnessOptions, 'create'),
+	);
 	const harness = response.harness ?? {};
 	if (!harness.harnessId || !harness.arn) {
 		throw new ApplicationError('CreateHarness did not return harnessId and arn');
@@ -1019,7 +1073,10 @@ async function updateHarness(
 	if (input.maxTokens !== undefined) payload.maxTokens = input.maxTokens;
 	if (input.timeoutSeconds !== undefined) payload.timeoutSeconds = input.timeoutSeconds;
 
-	await controlClient.updateHarness(harnessId, payload);
+	await controlClient.updateHarness(
+		harnessId,
+		withHarnessOptions(payload, input.harnessOptions, 'update'),
+	);
 
 	const ready = await waitForHarnessReady(controlClient, harnessId);
 	if (ready.status !== 'READY') {
@@ -1033,6 +1090,55 @@ async function updateHarness(
 
 /* ----- invoke payload builder ----- */
 
+/**
+ * Allowed tools for Invoke Existing. A restricted list disables every configured
+ * tool it does not name, so the harness's own tools must be included. When the
+ * invocation overrides Tools, those are the configured tools; otherwise they are
+ * read from GetHarness. GetHarness is only called when a restriction is set.
+ */
+async function resolveInvokeExistingAllowedTools(
+	controlClient: ControlClient,
+	harnessArn: string,
+	cfg: ResolvedConfig,
+): Promise<string[] | undefined> {
+	if (cfg.builtInTools === undefined && parseSelectors(cfg.toolSelectors).length === 0) {
+		return undefined;
+	}
+	let configuredToolNames = cfg.tools.map((t) => t.name);
+	if (configuredToolNames.length === 0) {
+		const response = await controlClient.getHarness(harnessIdFromArn(harnessArn));
+		const harnessTools = (response?.harness?.tools ?? []) as Array<{ name?: string }>;
+		configuredToolNames = harnessTools.map((t) => t.name).filter((n): n is string => !!n);
+	}
+	return buildAllowedTools({
+		builtIns: cfg.builtInTools,
+		extraSelectors: cfg.toolSelectors,
+		configuredToolNames,
+	});
+}
+
+/**
+ * Records the effective per-invocation tool restriction in the output, so a
+ * workflow (or someone testing in the editor) can see what the agent was
+ * allowed to use. `builtInToolsAvailable` is corrected when the list leaves out
+ * every built-in tool; it otherwise describes the harness default.
+ */
+function describeAllowedTools(
+	output: IDataObject,
+	allowedTools: string[] | undefined,
+): IDataObject {
+	if (allowedTools === undefined) return output;
+	const allowsBuiltIns = allowedTools.some(
+		(s) => s === '*' || !s.startsWith('@') || s.startsWith('@builtin'),
+	);
+	const harness = output.harness as IDataObject | undefined;
+	return {
+		...output,
+		allowedTools,
+		...(harness ? { harness: { ...harness, builtInToolsAvailable: allowsBuiltIns } } : {}),
+	};
+}
+
 interface InvokePayloadInput {
 	harnessArn: string;
 	runtimeSessionId: string;
@@ -1041,6 +1147,7 @@ interface InvokePayloadInput {
 	systemPrompt?: string;
 	tools?: ToolConfig[];
 	skills?: IDataObject[];
+	allowedTools?: string[];
 	actorId?: string;
 	qualifier?: string;
 	maxIterations?: number;
@@ -1060,6 +1167,9 @@ function buildInvokePayload(input: InvokePayloadInput): IDataObject {
 	if (input.systemPrompt) payload.systemPrompt = [{ text: input.systemPrompt }];
 	if (input.tools && input.tools.length > 0) payload.tools = input.tools;
 	if (input.skills && input.skills.length > 0) payload.skills = input.skills;
+	// An empty list is meaningful (no tools at all), so send it whenever defined;
+	// dropping it would silently mean "unrestricted".
+	if (input.allowedTools !== undefined) payload.allowedTools = input.allowedTools;
 	if (input.actorId) payload.actorId = input.actorId;
 	if (input.maxIterations !== undefined) payload.maxIterations = input.maxIterations;
 	if (input.maxTokens !== undefined) payload.maxTokens = input.maxTokens;

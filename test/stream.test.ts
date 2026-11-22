@@ -24,7 +24,11 @@ describe('consumeStream', () => {
 
 	it('captures usage and latency metadata', async () => {
 		const result = await consumeStream(
-			gen([{ metadata: { usage: { inputTokens: 100, outputTokens: 20 }, metrics: { latencyMs: 1234 } } }]),
+			gen([
+				{
+					metadata: { usage: { inputTokens: 100, outputTokens: 20 }, metrics: { latencyMs: 1234 } },
+				},
+			]),
 		);
 		expect(result.usage).toEqual({ inputTokens: 100, outputTokens: 20 });
 		expect(result.latencyMs).toBe(1234);
@@ -35,14 +39,23 @@ describe('consumeStream', () => {
 		// followed by its own metadata event.
 		const result = await consumeStream(
 			gen([
-				{ contentBlockStart: { contentBlockIndex: 0, start: { toolUse: { name: 'list_sailings', toolUseId: 'tu_1' } } } },
+				{
+					contentBlockStart: {
+						contentBlockIndex: 0,
+						start: { toolUse: { name: 'list_sailings', toolUseId: 'tu_1' } },
+					},
+				},
 				{ contentBlockStop: { contentBlockIndex: 0 } },
 				{ messageStop: { stopReason: 'tool_use' } },
-				{ metadata: { usage: { inputTokens: 1720, outputTokens: 34 }, metrics: { latencyMs: 646 } } },
+				{
+					metadata: { usage: { inputTokens: 1720, outputTokens: 34 }, metrics: { latencyMs: 646 } },
+				},
 				{ messageStop: { stopReason: 'tool_result' } },
 				{ contentBlockDelta: { contentBlockIndex: 0, delta: { text: 'No sailings found.' } } },
 				{ messageStop: { stopReason: 'end_turn' } },
-				{ metadata: { usage: { inputTokens: 1789, outputTokens: 12 }, metrics: { latencyMs: 589 } } },
+				{
+					metadata: { usage: { inputTokens: 1789, outputTokens: 12 }, metrics: { latencyMs: 589 } },
+				},
 			]),
 		);
 		expect(result.usage).toEqual({ inputTokens: 3509, outputTokens: 46 });
@@ -52,7 +65,12 @@ describe('consumeStream', () => {
 	it('reconstructs a tool use with streamed JSON input fragments', async () => {
 		const result = await consumeStream(
 			gen([
-				{ contentBlockStart: { contentBlockIndex: 1, start: { toolUse: { name: 'calc', toolUseId: 'tu_1' } } } },
+				{
+					contentBlockStart: {
+						contentBlockIndex: 1,
+						start: { toolUse: { name: 'calc', toolUseId: 'tu_1' } },
+					},
+				},
 				{ contentBlockDelta: { contentBlockIndex: 1, delta: { toolUse: { input: '{"a":' } } } },
 				{ contentBlockDelta: { contentBlockIndex: 1, delta: { toolUse: { input: '5}' } } } },
 				{ contentBlockStop: { contentBlockIndex: 1 } },
@@ -71,5 +89,26 @@ describe('consumeStream', () => {
 
 	it('throws on a throttling exception event', async () => {
 		await expect(consumeStream(gen([{ throttlingException: {} }]))).rejects.toThrow(/throttl/i);
+	});
+	it('sums prompt-cache token counts when the model reports them', async () => {
+		const result = await consumeStream(
+			gen([
+				{ metadata: { usage: { inputTokens: 10, outputTokens: 2, cacheWriteInputTokens: 3000 } } },
+				{ metadata: { usage: { inputTokens: 12, outputTokens: 4, cacheReadInputTokens: 3000 } } },
+			]),
+		);
+		expect(result.usage).toEqual({
+			inputTokens: 22,
+			outputTokens: 6,
+			cacheReadInputTokens: 3000,
+			cacheWriteInputTokens: 3000,
+		});
+	});
+
+	it('leaves the usage shape unchanged when no cache fields are reported', async () => {
+		const result = await consumeStream(
+			gen([{ metadata: { usage: { inputTokens: 5, outputTokens: 1 } } }]),
+		);
+		expect(result.usage).toEqual({ inputTokens: 5, outputTokens: 1 });
 	});
 });

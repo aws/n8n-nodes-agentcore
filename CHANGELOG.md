@@ -9,6 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Gateway tools with OAuth outbound auth failed on every invocation** (#111). The
+  node sent `outboundAuth.oauth.oauthCredentialProvider.credentialProviderName`, but
+  `oauth` is an `OAuthCredentialProvider` with a required `providerArn` and required
+  `scopes`, so the service rejected the request with `providerArn must not be null`.
+  The Gateway tool now asks for the **OAuth Credential Provider ARN** and at least one
+  scope, and sends `{ oauth: { providerArn, scopes } }`. A provider ARN saved in the
+  old name field is still read; a saved name gets an error explaining that the ARN is
+  needed. Verified against the live service. Covered by `test/tools.test.ts`.
+- **OpenAI could be sent an invalid API Format.** The API Format option defaults to
+  Bedrock's `converse_stream`, which was passed through for OpenAI, where only
+  `responses` and `chat_completions` are valid. It is no longer sent for OpenAI, so
+  the service default (`responses`) applies. Covered by `test/model.test.ts`.
+- **API Base URL now works for OpenAI.** `openAiModelConfig.apiBase` routes a direct
+  OpenAI call through an OpenAI-compatible gateway or proxy. The field was labelled
+  "LiteLLM only" and dropped for OpenAI.
+- **Docs corrected against the current AgentCore harness documentation.** First-run
+  provisioning takes a few minutes (measured at about 4 minutes in us-west-2, with or
+  without managed memory), not ~30 seconds. Web search is a Gateway connector
+  attached as a Gateway tool, not a pending `agentcore_web_search` type. The Tool
+  Results help no longer says the tool-use message must be rebuilt, since the
+  harness resumes from session state. `examples/07` now checks `stopReason` before
+  running the inline function, because a lifecycle hook can deny a tool request that
+  already appeared in `toolUses`.
 - **`usage` and `latencyMs` reported only the last model call.** The harness emits one
   `metadata` event per model call, so a run that uses tools emits several, and each
   one overwrote the previous. A run with a single tool call reported 1,789 input / 12
@@ -42,6 +65,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `responseMode: lastNode`, matching the multi-agent template.
 
 ### Added
+
+- **Allowed Built-in Tools** (#112). Restricts the managed built-in tools (shell,
+  read, write, edit, todo_write, retrieve_context, subagent, web_fetch), which AWS
+  can extend and which add about 3,000 input tokens per model call. Tools
+  configured on the node always stay available: a restricted `allowedTools` list
+  disables every tool it does not name, and a plain name only matches built-ins,
+  so the node adds each configured tool as `@<tool name>` (verified live). Sent
+  per invocation in both modes and never written to the harness, so changing it
+  is instant. **Additional Tool Selectors** narrows an MCP server or Gateway to
+  some of its tools. Selecting no built-ins sends `[]`, which the service treats
+  as no built-in tools.
+- **Truncation** (#112): pin `none`, `sliding_window`, or
+  `summarization` (with ratio, preserved messages, and summary prompt) instead of
+  the managed default.
+- **Tags** (#112): set on harness creation (AgentCore copies them to the managed
+  runtime and memory) and kept in sync afterwards with TagResource /
+  UntagResource, without a harness update. Tags set outside n8n are not removed.
+- **IAM (SigV4) outbound auth for remote MCP servers** (#112):
+  `remoteMcp.outboundAuth.awsIam { service, region? }`, so the harness signs MCP
+  calls with its execution role.
+- **Prompt-cache usage** (#112): `usage.cacheReadInputTokens` and
+  `usage.cacheWriteInputTokens`, summed across model calls, when the model reports
+  them.
+
+- **Output shows what was applied** (#112): `allowedTools` (the effective list sent
+  with the invocation), `tags` (Run Agent), and `harness.truncation`.
+  `harness.builtInToolsAvailable` is `false` when the list leaves out every
+  built-in tool.
+
+Existing workflows are unaffected: the new fields are hashed only when set, so a
+workflow that does not use them keeps its configuration hash and issues no
+`UpdateHarness`. Covered by `test/harnessOptions.test.ts`, `test/tools.test.ts`,
+`test/stream.test.ts`, and the new node-level `test/node.test.ts`, which drives
+`execute()` against an in-memory AgentCore and checks which request each option
+lands on.
 
 - **The node now identifies itself on every AgentCore request.** Requests carry
   `User-Agent: n8n-nodes-agentcore` and the same value in `x-amz-user-agent`, so

@@ -100,7 +100,7 @@ export const harnessFields: INodeProperties[] = [
 				default: '',
 				placeholder: 'https://my-openai-proxy.example.com/v1',
 				description:
-					'LiteLLM only. Custom endpoint URL for an OpenAI-compatible gateway, proxy, or self-hosted endpoint.',
+					'OpenAI and LiteLLM only. Custom endpoint URL for an OpenAI-compatible gateway, proxy, or self-hosted endpoint. For OpenAI the harness sends the API key to this endpoint, so use only trusted endpoints.',
 			},
 			{
 				displayName: 'API Format',
@@ -113,7 +113,7 @@ export const harnessFields: INodeProperties[] = [
 					{ name: 'Chat Completions', value: 'chat_completions' },
 				],
 				description:
-					'Bedrock/OpenAI only. For Bedrock, Responses/Chat Completions route through the Bedrock Mantle endpoint (enables OpenAI-compatible and Mantle models with no API key). For OpenAI direct, choose Responses (default) or Chat Completions.',
+					'Bedrock/OpenAI only. For Bedrock, Responses/Chat Completions route through the Bedrock Mantle endpoint (enables OpenAI-compatible and Mantle models with no API key). For OpenAI direct, choose Responses (default) or Chat Completions; Converse Stream is Bedrock-only and is not sent for OpenAI.',
 			},
 			{
 				displayName: 'API Key ARN',
@@ -345,6 +345,33 @@ export const harnessFields: INodeProperties[] = [
 					'Identifier for the entity interacting with the agent (used for memory scoping). Recommended when memory is enabled. When a harness ARN is provided, sent as a per-invocation override.',
 			},
 			{
+				displayName: 'Additional Tool Selectors',
+				name: 'additionalToolSelectors',
+				type: 'string',
+				default: '',
+				placeholder: '@my-mcp-server/read_*, @my-gateway/search',
+				description:
+					'Optional, for narrowing an MCP server or Gateway to some of its tools: comma-separated selectors such as @my-mcp-server/tool_name or @my-mcp-server/read_*. A tool named here is limited to what you list; tools you configured and do not name stay fully available.',
+			},
+			{
+				displayName: 'Allowed Built-in Tools',
+				name: 'allowedBuiltInTools',
+				type: 'multiOptions',
+				default: [],
+				options: [
+					{ name: 'Edit Files', value: 'edit' },
+					{ name: 'Read Files', value: 'read' },
+					{ name: 'Retrieve Context', value: 'retrieve_context' },
+					{ name: 'Shell', value: 'shell' },
+					{ name: 'Subagent', value: 'subagent' },
+					{ name: 'Todo Write', value: 'todo_write' },
+					{ name: 'Web Fetch', value: 'web_fetch' },
+					{ name: 'Write Files', value: 'write' },
+				],
+				description:
+					'Restrict the managed built-in tools to the ones selected; select none for no built-in tools. The tools you configured under Tools always stay available. Without this option the agent gets the full built-in set, which AWS can extend and which adds about 3,000 input tokens to every model call. Applied per invocation, so changing it never updates the harness. This limits which tools the agent can choose, not what they can do: a configured Code Interpreter can still run system commands in its own sandbox.',
+			},
+			{
 				displayName: 'Endpoint (Qualifier)',
 				name: 'qualifier',
 				type: 'string',
@@ -394,7 +421,7 @@ export const harnessFields: INodeProperties[] = [
 		typeOptions: { multipleValues: true },
 		default: {},
 		description:
-			'Results for inline-function tool calls returned by a previous invocation (stopReason "tool_use"). When set, the node sends the assistant tool-use message plus your tool result on the same session, and the agent resumes. Provide the Tool Use ID, function name, and original input from the prior output.',
+			'Results for inline-function tool calls returned by a previous invocation. Only send results when that invocation ended with stopReason "tool_use"; with lifecycle hooks a tool request can appear in toolUses and then be denied. Use the same Session ID: the harness resumes the pending call from session state using the Tool Use ID and your result.',
 		options: [
 			{
 				name: 'result',
@@ -407,7 +434,7 @@ export const harnessFields: INodeProperties[] = [
 						default: '',
 						placeholder: '={{	$json.toolUses[0	].input	}}',
 						description:
-							'The original input the model passed to the function (from the prior output). Required so the assistant tool-use message can be reconstructed.',
+							'Optional. The input the model passed to the function, from the prior output. The harness resumes from its own session state, so this is not needed to continue.',
 					},
 					{
 						displayName: 'Function Name',
@@ -604,6 +631,90 @@ export const harnessFields: INodeProperties[] = [
 					{ name: 'Episodic', value: 'EPISODIC' },
 				],
 				description: 'Long-term memory strategies for managed memory (1–4)',
+			},
+			{
+				displayName: 'Tags (JSON)',
+				name: 'tags',
+				type: 'json',
+				default: '',
+				placeholder: '{ "team": "support", "cost-center": "1234" }',
+				description:
+					'Tags for cost allocation, as a JSON object of string values. Applied when the harness is created and copied to its managed runtime and memory; changing them later does not retag an existing harness (use Force Recreate).',
+			},
+			{
+				displayName: 'Truncation',
+				name: 'truncation',
+				type: 'fixedCollection',
+				placeholder: 'Add Truncation',
+				default: {},
+				description:
+					'Pin how the harness manages a long conversation context. Without it AgentCore applies its managed policy (currently summarization), which can change. Changing the strategy updates the harness, but removing this option does NOT return it to the managed default: the last pinned strategy stays until you use Force Recreate.',
+				options: [
+					{
+						name: 'config',
+						displayName: 'Truncation',
+						values: [
+							{
+								displayName: 'Preserve Recent Messages',
+								name: 'preserveRecentMessages',
+								type: 'number',
+								default: 10,
+								displayOptions: { show: { strategy: ['summarization'] } },
+								description:
+									'Number of most recent messages kept verbatim when older turns are summarized',
+							},
+							{
+								displayName: 'Strategy',
+								name: 'strategy',
+								type: 'options',
+								default: 'sliding_window',
+								options: [
+									{
+										name: 'Sliding Window',
+										value: 'sliding_window',
+										description: 'Keep only the most recent messages',
+									},
+									{
+										name: 'Summarization',
+										value: 'summarization',
+										description: 'Summarize older turns with the harness model',
+									},
+									{
+										name: 'None',
+										value: 'none',
+										description: 'Keep the full conversation in context',
+									},
+								],
+							},
+							{
+								displayName: 'Summary Prompt',
+								name: 'summarizationSystemPrompt',
+								type: 'string',
+								typeOptions: { rows: 3 },
+								default: '',
+								displayOptions: { show: { strategy: ['summarization'] } },
+								description: 'Optional system prompt used to generate the summaries',
+							},
+							{
+								displayName: 'Summary Ratio',
+								name: 'summaryRatio',
+								type: 'number',
+								typeOptions: { numberPrecision: 2 },
+								default: 0.3,
+								displayOptions: { show: { strategy: ['summarization'] } },
+								description: 'Share of the older context to summarize, for example 0.3',
+							},
+							{
+								displayName: 'Window Size',
+								name: 'messagesCount',
+								type: 'number',
+								default: 20,
+								displayOptions: { show: { strategy: ['sliding_window'] } },
+								description: 'Number of recent messages kept in context',
+							},
+						],
+					},
+				],
 			},
 		],
 	},
