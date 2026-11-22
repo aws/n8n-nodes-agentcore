@@ -295,7 +295,7 @@ async function runAgent(
 	}
 	validateExecutionRoleArn(executionRoleArn);
 
-	const truncation = buildTruncation(provisioning);
+	const truncation = buildTruncation(provisioning.truncation as IDataObject | undefined);
 	const tags = parseTags(provisioning.tags);
 
 	const desiredHash = configHash({

@@ -32,47 +32,45 @@ export function parseAllowedTools(raw: string | undefined): string[] | undefined
 	return Array.from(new Set(selectors));
 }
 
-export type TruncationStrategy = 'default' | 'none' | 'sliding_window' | 'summarization';
+export type TruncationStrategy = 'none' | 'sliding_window' | 'summarization';
 
 /**
- * Builds the `truncation` configuration (HarnessTruncationConfiguration):
+ * Builds the `truncation` configuration (HarnessTruncationConfiguration) from
+ * the Truncation group in Provisioning Options:
  *   { strategy: 'none' }
  *   { strategy: 'sliding_window', config: { slidingWindow: { messagesCount? } } }
  *   { strategy: 'summarization', config: { summarization: { summaryRatio?,
  *       preserveRecentMessages?, summarizationSystemPrompt? } } }
  *
- * Returns `undefined` for the "service default" choice, so the field is
- * omitted and the harness applies its managed context-management policy
- * (documented as summarization, which can change over time).
+ * `group` is the fixedCollection value, `{ config: { strategy, ... } }`.
+ * Returns `undefined` when the group was not added, so the field is omitted and
+ * the harness applies its managed context-management policy.
  */
-export function buildTruncation(opts: IDataObject): IDataObject | undefined {
-	const strategy = ((opts.truncationStrategy as string) || 'default') as TruncationStrategy;
+export function buildTruncation(group: IDataObject | undefined): IDataObject | undefined {
+	const cfg = group?.config as IDataObject | undefined;
+	if (!cfg) return undefined;
+	const strategy = ((cfg.strategy as string) || 'sliding_window') as TruncationStrategy;
 	switch (strategy) {
 		case 'none':
 			return { strategy: 'none' };
-		case 'sliding_window': {
-			const slidingWindow: IDataObject = {};
-			const messagesCount = wholeNumber(opts.truncationMessagesCount, 'Truncation Window Size');
-			if (messagesCount !== undefined) slidingWindow.messagesCount = messagesCount;
-			return { strategy: 'sliding_window', config: { slidingWindow } };
-		}
 		case 'summarization': {
 			const summarization: IDataObject = {};
 			// Ranges are not documented in the API model, so the service validates them.
-			const ratio = numberOrUndef(opts.truncationSummaryRatio);
+			const ratio = numberOrUndef(cfg.summaryRatio);
 			if (ratio !== undefined) summarization.summaryRatio = ratio;
-			const preserve = wholeNumber(
-				opts.truncationPreserveRecentMessages,
-				'Truncation Preserve Recent Messages',
-			);
+			const preserve = wholeNumber(cfg.preserveRecentMessages, 'Preserve Recent Messages');
 			if (preserve !== undefined) summarization.preserveRecentMessages = preserve;
-			const prompt = ((opts.truncationSummaryPrompt as string) || '').trim();
+			const prompt = ((cfg.summarizationSystemPrompt as string) || '').trim();
 			if (prompt) summarization.summarizationSystemPrompt = prompt;
 			return { strategy: 'summarization', config: { summarization } };
 		}
-		case 'default':
-		default:
-			return undefined;
+		case 'sliding_window':
+		default: {
+			const slidingWindow: IDataObject = {};
+			const messagesCount = wholeNumber(cfg.messagesCount, 'Window Size');
+			if (messagesCount !== undefined) slidingWindow.messagesCount = messagesCount;
+			return { strategy: 'sliding_window', config: { slidingWindow } };
+		}
 	}
 }
 

@@ -51,7 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and sent as a per-invocation override with a Harness ARN. Clearing the field
   restores the default (`["*"]`) on the next update. Verified live: with `read`
   only, the agent could not run a shell command; after clearing it, it could.
-- **Truncation Strategy** (#112): pin `none`, `sliding_window`, or
+- **Truncation** (#112): pin `none`, `sliding_window`, or
   `summarization` (with ratio, preserved messages, and summary prompt) instead of
   the managed default.
 - **Tags** on harness creation (#112), copied by AgentCore to the managed runtime

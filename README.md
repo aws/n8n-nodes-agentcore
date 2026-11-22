@@ -282,12 +282,13 @@ session and the agent resumes. The Prompt may be blank on that second call.
   per-invocation override. In our testing, `read` alone cut a short run from
   about 5,000 to about 750 input tokens. See
   [Tools](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/harness-tools.html).
-- **Truncation Strategy** (Provisioning Options). Without it the harness applies
-  AgentCore's managed policy, currently summarization, which can change. Pin
-  **None**, **Sliding Window** (window size), or **Summarization** (ratio,
-  messages kept verbatim, optional summary prompt) when a workflow needs fixed
-  behaviour. Switching back to Service Default does not reset an existing
-  harness; use Force Recreate.
+- **Truncation** (Provisioning Options). Without it the harness applies
+  AgentCore's managed policy, currently summarization, which can change. Add the
+  Truncation group and pick **Sliding Window** (window size), **Summarization**
+  (ratio, messages kept verbatim, optional summary prompt), or **None** when a
+  workflow needs fixed behaviour; the matching fields appear with defaults.
+  Removing the group later does not reset an existing harness; use Force
+  Recreate.
 - **Tags (JSON)** (Provisioning Options). Cost-allocation tags, applied when the
   harness is created and copied to its managed runtime and memory. Changing them
   later does not retag an existing harness.

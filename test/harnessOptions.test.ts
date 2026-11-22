@@ -42,34 +42,39 @@ describe('parseAllowedTools', () => {
 });
 
 describe('buildTruncation', () => {
-	it('omits truncation for the service default', () => {
+	const group = (config: Record<string, unknown>) => ({ config });
+
+	it('omits truncation when the group was not added', () => {
+		expect(buildTruncation(undefined)).toBeUndefined();
 		expect(buildTruncation({})).toBeUndefined();
-		expect(
-			buildTruncation({ truncationStrategy: 'default', truncationSummaryRatio: 0.5 }),
-		).toBeUndefined();
 	});
 
 	it('builds none', () => {
-		expect(buildTruncation({ truncationStrategy: 'none' })).toEqual({ strategy: 'none' });
+		expect(buildTruncation(group({ strategy: 'none' }))).toEqual({ strategy: 'none' });
 	});
 
-	it('builds sliding_window with messagesCount', () => {
-		expect(
-			buildTruncation({ truncationStrategy: 'sliding_window', truncationMessagesCount: 12 }),
-		).toEqual({
+	it('builds sliding_window with messagesCount, the default strategy', () => {
+		expect(buildTruncation(group({ strategy: 'sliding_window', messagesCount: 12 }))).toEqual({
 			strategy: 'sliding_window',
 			config: { slidingWindow: { messagesCount: 12 } },
+		});
+		// The UI pre-fills the strategy; a missing one falls back to sliding_window.
+		expect(buildTruncation(group({ messagesCount: 20 }))).toEqual({
+			strategy: 'sliding_window',
+			config: { slidingWindow: { messagesCount: 20 } },
 		});
 	});
 
 	it('builds summarization with every option', () => {
 		expect(
-			buildTruncation({
-				truncationStrategy: 'summarization',
-				truncationSummaryRatio: 0.4,
-				truncationPreserveRecentMessages: 6,
-				truncationSummaryPrompt: '  Summarize tersely.  ',
-			}),
+			buildTruncation(
+				group({
+					strategy: 'summarization',
+					summaryRatio: 0.4,
+					preserveRecentMessages: 6,
+					summarizationSystemPrompt: '  Summarize tersely.  ',
+				}),
+			),
 		).toEqual({
 			strategy: 'summarization',
 			config: {
@@ -82,15 +87,16 @@ describe('buildTruncation', () => {
 		});
 	});
 
-	it('ignores options that belong to a different strategy', () => {
+	it('ignores values that belong to a different strategy', () => {
+		// n8n keeps hidden values in the group, so switching strategy must not leak them.
 		expect(
-			buildTruncation({ truncationStrategy: 'sliding_window', truncationSummaryRatio: 0.4 }),
-		).toEqual({ strategy: 'sliding_window', config: { slidingWindow: {} } });
+			buildTruncation(group({ strategy: 'sliding_window', messagesCount: 8, summaryRatio: 0.4 })),
+		).toEqual({ strategy: 'sliding_window', config: { slidingWindow: { messagesCount: 8 } } });
 	});
 
-	it('rejects a non-integer message count', () => {
+	it('rejects a non-integer window size', () => {
 		expect(() =>
-			buildTruncation({ truncationStrategy: 'sliding_window', truncationMessagesCount: 2.5 }),
+			buildTruncation(group({ strategy: 'sliding_window', messagesCount: 2.5 })),
 		).toThrow(/whole number/);
 	});
 });
