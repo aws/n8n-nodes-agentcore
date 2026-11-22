@@ -194,8 +194,10 @@ When versioning/endpoint actions are enabled, the output also carries
 
 `usage` is summed across every model call in the run. When the model reports
 prompt caching (Bedrock `converse_stream` harnesses cache automatically), it also
-carries `cacheReadInputTokens` and `cacheWriteInputTokens`; include them when you
-track cost, since cached tokens are billed at different rates.
+carries `cacheReadInputTokens` and `cacheWriteInputTokens`. `inputTokens` then
+counts only the uncached part (in our testing 4 tokens next to about 5,000 cached),
+so include the cache fields when you track cost; cached tokens are billed at
+different rates.
 
 ### Client identification
 
@@ -271,27 +273,36 @@ session and the agent resumes. The Prompt may be blank on that second call.
 
 #### Limiting tools, context, and cost
 
-- **Allowed Tools** (Additional Options). Every harness session includes a
-  managed built-in tool set (`shell`, `read`, `write`, `edit`, `todo_write`,
+- **Allowed Built-in Tools** (Additional Options). Every harness session includes
+  a managed built-in tool set (`shell`, `read`, `write`, `edit`, `todo_write`,
   `retrieve_context`, `subagent`, `web_fetch`) that AWS can extend, and its
-  definitions add roughly 3,000 input tokens to every model call. List only the
-  tools the agent needs, comma-separated: built-in names (`read`, `shell`),
-  `@builtin`, `@builtin/<name>`, `@<server>` for every tool of an MCP server, or
-  `@<server>/<tool>`. Configured tools you leave out cannot be called. In Run
-  Agent mode the list is set on the harness; with a Harness ARN it is a
-  per-invocation override. In our testing, `read` alone cut a short run from
-  about 5,000 to about 750 input tokens. See
+  definitions add roughly 3,000 input tokens to every model call. Add this option
+  and tick only the built-ins the agent needs, or none. The tools you configured
+  under **Tools** always stay available: the node adds them as `@<tool name>`,
+  because a restricted list otherwise disables every tool it does not name. It is
+  sent with each invocation and never written to the harness, so changing it is
+  instant. In our testing, `read` alone cut a short run from about 5,000 to about
+  750 input tokens. This limits which tools the agent can choose, not what those
+  tools can do: with Shell removed, an agent that also has Code Interpreter still
+  ran a shell command through it, inside the Code Interpreter sandbox. See
   [Tools](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/harness-tools.html).
+- **Additional Tool Selectors** (Additional Options). To narrow an MCP server or
+  Gateway to some of its tools, list selectors such as `@my-mcp-server/read_*`.
+  A configured tool named here is limited to what you list.
 - **Truncation** (Provisioning Options). Without it the harness applies
   AgentCore's managed policy, currently summarization, which can change. Add the
   Truncation group and pick **Sliding Window** (window size), **Summarization**
   (ratio, messages kept verbatim, optional summary prompt), or **None** when a
   workflow needs fixed behaviour; the matching fields appear with defaults.
-  Removing the group later does not reset an existing harness; use Force
-  Recreate.
-- **Tags (JSON)** (Provisioning Options). Cost-allocation tags, applied when the
-  harness is created and copied to its managed runtime and memory. Changing them
-  later does not retag an existing harness.
+  Changing the strategy updates the harness. Removing the group does **not**
+  return the harness to the managed default; the last pinned strategy stays until
+  you use Force Recreate.
+- **Tags (JSON)** (Provisioning Options). Cost-allocation tags. They are set on
+  CreateHarness, where AgentCore also copies them to the managed runtime and
+  memory. Later changes are applied to the harness with TagResource /
+  UntagResource, without a harness update (the copies on the runtime and memory
+  are not changed). Tags set outside n8n are never removed. Needs
+  `bedrock-agentcore:TagResource` and `UntagResource`.
 - **Remote MCP IAM auth.** Set **MCP Outbound Auth** to AWS IAM / SigV4 and give
   the signing service (for example `lambda` for a Lambda function URL). The
   harness signs each MCP request with its execution role, so no secret is

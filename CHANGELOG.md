@@ -43,19 +43,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Allowed Tools** (#112). Restricts which tools the agent can call, using the
-  harness `allowedTools` selectors (`read`, `shell`, `@builtin`, `@<server>`,
-  `@<server>/<tool>`, globs). The harness otherwise exposes a managed built-in set
-  (shell, file editing, sub-agents, web fetch) that AWS can extend and that adds
-  about 3,000 input tokens per model call. Set on the harness in Run Agent mode
-  and sent as a per-invocation override with a Harness ARN. Clearing the field
-  restores the default (`["*"]`) on the next update. Verified live: with `read`
-  only, the agent could not run a shell command; after clearing it, it could.
+- **Allowed Built-in Tools** (#112). Restricts the managed built-in tools (shell,
+  read, write, edit, todo_write, retrieve_context, subagent, web_fetch), which AWS
+  can extend and which add about 3,000 input tokens per model call. Tools
+  configured on the node always stay available: a restricted `allowedTools` list
+  disables every tool it does not name, and a plain name only matches built-ins,
+  so the node adds each configured tool as `@<tool name>` (verified live). Sent
+  per invocation in both modes and never written to the harness, so changing it
+  is instant. **Additional Tool Selectors** narrows an MCP server or Gateway to
+  some of its tools. Selecting no built-ins sends `[]`, which the service treats
+  as no built-in tools.
 - **Truncation** (#112): pin `none`, `sliding_window`, or
   `summarization` (with ratio, preserved messages, and summary prompt) instead of
   the managed default.
-- **Tags** on harness creation (#112), copied by AgentCore to the managed runtime
-  and memory.
+- **Tags** (#112): set on harness creation (AgentCore copies them to the managed
+  runtime and memory) and kept in sync afterwards with TagResource /
+  UntagResource, without a harness update. Tags set outside n8n are not removed.
 - **IAM (SigV4) outbound auth for remote MCP servers** (#112):
   `remoteMcp.outboundAuth.awsIam { service, region? }`, so the harness signs MCP
   calls with its execution role.

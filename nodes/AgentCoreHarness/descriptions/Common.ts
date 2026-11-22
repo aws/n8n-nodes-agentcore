@@ -90,7 +90,6 @@ export const toolsField: INodeProperties = {
 					options: [
 						{ name: 'Headers Only (Default)', value: 'headers' },
 						{ name: 'AWS IAM / SigV4', value: 'awsIam' },
-						{ name: 'None', value: 'none' },
 					],
 					description:
 						'How the harness authenticates to the MCP server. AWS IAM signs each request with the harness execution role, which needs permission to call the endpoint.',

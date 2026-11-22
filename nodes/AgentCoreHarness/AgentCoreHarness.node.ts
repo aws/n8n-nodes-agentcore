@@ -31,7 +31,9 @@ import {
 import { buildSkillsArray } from './helpers/skills';
 import {
 	buildTruncation,
-	parseAllowedTools,
+	buildAllowedTools,
+	parseSelectors,
+	syncTags,
 	parseTags,
 	withHarnessOptions,
 	type HarnessOptions,
@@ -68,6 +70,8 @@ interface HarnessRecord {
 	harnessId: string;
 	arn: string;
 	configHash: string;
+	/** Tags the node last applied; absent for harnesses recorded before tag sync. */
+	tags?: Record<string, string>;
 }
 interface NodeStaticData {
 	harnesses?: Record<string, HarnessRecord>;
@@ -89,7 +93,10 @@ interface ResolvedConfig {
 	maxIterations?: number;
 	maxTokens?: number;
 	timeoutSeconds?: number;
-	allowedTools?: string[];
+	/** Built-in tools to allow; undefined when the option was not added (no restriction). */
+	builtInTools?: string[];
+	/** Extra allowed-tool selectors, for example `@my-mcp-server/read_*`. */
+	toolSelectors: string;
 	actorId: string;
 	qualifier: string;
 	runtimeUserId: string;
@@ -239,7 +246,10 @@ function resolveConfig(
 		maxIterations: additional.maxIterations as number | undefined,
 		maxTokens: additional.maxTokens as number | undefined,
 		timeoutSeconds: additional.timeoutSeconds as number | undefined,
-		allowedTools: parseAllowedTools(additional.allowedTools as string | undefined),
+		builtInTools: Array.isArray(additional.allowedBuiltInTools)
+			? (additional.allowedBuiltInTools as string[])
+			: undefined,
+		toolSelectors: (additional.additionalToolSelectors as string) || '',
 		actorId: (additional.actorId as string) || '',
 		qualifier: ((additional.qualifier as string) || '').trim(),
 		runtimeUserId: ((additional.runtimeUserId as string) || '').trim(),
@@ -309,7 +319,6 @@ async function runAgent(
 		maxIterations: cfg.maxIterations,
 		maxTokens: cfg.maxTokens,
 		timeoutSeconds: cfg.timeoutSeconds,
-		allowedTools: cfg.allowedTools,
 		truncation,
 	});
 
@@ -401,7 +410,7 @@ async function runAgent(
 		maxIterations: cfg.maxIterations,
 		maxTokens: cfg.maxTokens,
 		timeoutSeconds: cfg.timeoutSeconds,
-		harnessOptions: { allowedTools: cfg.allowedTools, truncation, tags },
+		harnessOptions: { truncation, tags },
 	};
 
 	if (!record) {
@@ -412,15 +421,23 @@ async function runAgent(
 			provisionInput,
 			desiredHash,
 		);
+		// Tags were sent on CreateHarness.
+		record.tags = tags ?? {};
 		staticData.harnesses![agentName] = record;
-	} else if (record.configHash !== desiredHash) {
-		record = await updateHarness(
-			controlClient,
-			record.harnessId,
-			record.arn,
-			provisionInput,
-			desiredHash,
-		);
+	} else {
+		const previousTags = record.tags;
+		if (record.configHash !== desiredHash) {
+			record = await updateHarness(
+				controlClient,
+				record.harnessId,
+				record.arn,
+				provisionInput,
+				desiredHash,
+			);
+		}
+		// Tags are not part of the config hash: TagResource / UntagResource apply
+		// a change directly, without a multi-minute UpdateHarness.
+		record.tags = await syncTags(controlClient, record.arn, previousTags, tags);
 		staticData.harnesses![agentName] = record;
 	}
 
@@ -445,6 +462,12 @@ async function runAgent(
 		messages,
 		modelConfig: cfg.modelConfig,
 		skills: cfg.skills,
+		// Sent per invocation (never on the harness), so changing it is instant.
+		allowedTools: buildAllowedTools({
+			builtIns: cfg.builtInTools,
+			extraSelectors: cfg.toolSelectors,
+			configuredToolNames: cfg.tools.map((t) => t.name),
+		}),
 		actorId: cfg.actorId,
 		qualifier: cfg.qualifier,
 		maxIterations: cfg.maxIterations,
@@ -503,6 +526,8 @@ async function invokeExisting(
 	const sessionId = resolveSessionId(sessionInput);
 	const messages = buildMessages(ctx, itemIndex, prompt);
 
+	const allowedTools = await resolveInvokeExistingAllowedTools(controlClient, harnessArn, cfg);
+
 	const invokePayload = buildInvokePayload({
 		harnessArn,
 		runtimeSessionId: sessionId,
@@ -511,7 +536,7 @@ async function invokeExisting(
 		systemPrompt: cfg.systemPrompt.trim() ? cfg.systemPrompt : undefined,
 		tools: cfg.tools.length > 0 ? cfg.tools : undefined,
 		skills: cfg.skills,
-		allowedTools: cfg.allowedTools,
+		allowedTools,
 		actorId: cfg.actorId || undefined,
 		qualifier: cfg.qualifier,
 		maxIterations: cfg.maxIterations,
@@ -1055,6 +1080,34 @@ async function updateHarness(
 
 /* ----- invoke payload builder ----- */
 
+/**
+ * Allowed tools for Invoke Existing. A restricted list disables every configured
+ * tool it does not name, so the harness's own tools must be included. When the
+ * invocation overrides Tools, those are the configured tools; otherwise they are
+ * read from GetHarness. GetHarness is only called when a restriction is set.
+ */
+async function resolveInvokeExistingAllowedTools(
+	controlClient: ControlClient,
+	harnessArn: string,
+	cfg: ResolvedConfig,
+): Promise<string[] | undefined> {
+	if (cfg.builtInTools === undefined && parseSelectors(cfg.toolSelectors).length === 0) {
+		return undefined;
+	}
+	let configuredToolNames = cfg.tools.map((t) => t.name);
+	if (configuredToolNames.length === 0) {
+		const harnessId = harnessArn.split('/').pop() as string;
+		const response = await controlClient.getHarness(harnessId);
+		const harnessTools = (response?.harness?.tools ?? []) as Array<{ name?: string }>;
+		configuredToolNames = harnessTools.map((t) => t.name).filter((n): n is string => !!n);
+	}
+	return buildAllowedTools({
+		builtIns: cfg.builtInTools,
+		extraSelectors: cfg.toolSelectors,
+		configuredToolNames,
+	});
+}
+
 interface InvokePayloadInput {
 	harnessArn: string;
 	runtimeSessionId: string;
@@ -1083,8 +1136,9 @@ function buildInvokePayload(input: InvokePayloadInput): IDataObject {
 	if (input.systemPrompt) payload.systemPrompt = [{ text: input.systemPrompt }];
 	if (input.tools && input.tools.length > 0) payload.tools = input.tools;
 	if (input.skills && input.skills.length > 0) payload.skills = input.skills;
-	if (input.allowedTools && input.allowedTools.length > 0)
-		payload.allowedTools = input.allowedTools;
+	// An empty list is meaningful (no tools at all), so send it whenever defined;
+	// dropping it would silently mean "unrestricted".
+	if (input.allowedTools !== undefined) payload.allowedTools = input.allowedTools;
 	if (input.actorId) payload.actorId = input.actorId;
 	if (input.maxIterations !== undefined) payload.maxIterations = input.maxIterations;
 	if (input.maxTokens !== undefined) payload.maxTokens = input.maxTokens;

@@ -345,13 +345,31 @@ export const harnessFields: INodeProperties[] = [
 					'Identifier for the entity interacting with the agent (used for memory scoping). Recommended when memory is enabled. When a harness ARN is provided, sent as a per-invocation override.',
 			},
 			{
-				displayName: 'Allowed Tools',
-				name: 'allowedTools',
+				displayName: 'Additional Tool Selectors',
+				name: 'additionalToolSelectors',
 				type: 'string',
 				default: '',
-				placeholder: 'read, @builtin/shell, @my-mcp-server',
+				placeholder: '@my-mcp-server/read_*, @my-gateway/search',
 				description:
-					'Comma-separated tool selectors the agent may use, for example read, shell, @builtin, @my-mcp-server (every tool of that MCP server), or @my-mcp-server/tool_name. Leave blank to allow every configured tool plus the managed built-in set (shell, read, write, edit, subagent, web_fetch, and others), which AWS can extend and which adds about 3,000 input tokens per model call. Run Agent sets it on the harness; with a Harness ARN it is a per-invocation override. Configured tools you leave out of the list cannot be called.',
+					'Optional, for narrowing an MCP server or Gateway to some of its tools: comma-separated selectors such as @my-mcp-server/tool_name or @my-mcp-server/read_*. A tool named here is limited to what you list; tools you configured and do not name stay fully available.',
+			},
+			{
+				displayName: 'Allowed Built-in Tools',
+				name: 'allowedBuiltInTools',
+				type: 'multiOptions',
+				default: [],
+				options: [
+					{ name: 'Edit Files', value: 'edit' },
+					{ name: 'Read Files', value: 'read' },
+					{ name: 'Retrieve Context', value: 'retrieve_context' },
+					{ name: 'Shell', value: 'shell' },
+					{ name: 'Subagent', value: 'subagent' },
+					{ name: 'Todo Write', value: 'todo_write' },
+					{ name: 'Web Fetch', value: 'web_fetch' },
+					{ name: 'Write Files', value: 'write' },
+				],
+				description:
+					'Restrict the managed built-in tools to the ones selected; select none for no built-in tools. The tools you configured under Tools always stay available. Without this option the agent gets the full built-in set, which AWS can extend and which adds about 3,000 input tokens to every model call. Applied per invocation, so changing it never updates the harness. This limits which tools the agent can choose, not what they can do: a configured Code Interpreter can still run system commands in its own sandbox.',
 			},
 			{
 				displayName: 'Endpoint (Qualifier)',
@@ -630,7 +648,7 @@ export const harnessFields: INodeProperties[] = [
 				placeholder: 'Add Truncation',
 				default: {},
 				description:
-					'Pin how the harness manages a long conversation context. Without it AgentCore applies its managed policy (currently summarization), which can change. Removing it later does not reset an existing harness (use Force Recreate).',
+					'Pin how the harness manages a long conversation context. Without it AgentCore applies its managed policy (currently summarization), which can change. Changing the strategy updates the harness, but removing this option does NOT return it to the managed default: the last pinned strategy stays until you use Force Recreate.',
 				options: [
 					{
 						name: 'config',

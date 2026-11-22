@@ -149,8 +149,7 @@ function buildGatewayOutboundAuth(uiTool: IDataObject): IDataObject | undefined 
  * Builds HarnessRemoteMcpOutboundAuth for a remote MCP tool:
  *   { awsIam: { service, region? } }  the harness SigV4-signs each MCP request
  *                                     with its execution role
- *   { none: {} }                      explicitly unauthenticated
- * Returns undefined for the default ("headers only"), so the field is omitted
+ * Returns undefined for the default (headers only, if any), so the field is omitted
  * and existing tool configs hash and serialize exactly as before.
  */
 function buildRemoteMcpOutboundAuth(uiTool: IDataObject): IDataObject | undefined {
@@ -168,8 +167,6 @@ function buildRemoteMcpOutboundAuth(uiTool: IDataObject): IDataObject | undefine
 			if (region) awsIam.region = region;
 			return { awsIam };
 		}
-		case 'none':
-			return { none: {} };
 		case 'headers':
 		default:
 			return undefined;
@@ -243,7 +240,6 @@ export function configHash(input: {
 	maxIterations?: number;
 	maxTokens?: number;
 	timeoutSeconds?: number;
-	allowedTools?: string[];
 	truncation?: IDataObject;
 }): string {
 	const fields: Record<string, unknown> = {
@@ -260,9 +256,6 @@ export function configHash(input: {
 	};
 	// Fields added after 0.4.x are hashed only when set, so a workflow that does
 	// not use them keeps its existing hash and does not trigger an UpdateHarness.
-	if (input.allowedTools && input.allowedTools.length > 0) {
-		fields.allowedTools = input.allowedTools.slice().sort();
-	}
 	if (input.truncation) fields.truncation = input.truncation;
 	const normalized = JSON.stringify(fields);
 	return createHash('sha256').update(normalized).digest('hex');

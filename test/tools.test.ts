@@ -198,13 +198,6 @@ describe('remote MCP outbound auth', () => {
 			}),
 		).toThrow(/signing service name/);
 	});
-
-	it('builds an explicit none', () => {
-		const tools = buildToolsArray({
-			tool: [{ type: 'remote_mcp', name: 'm', url, mcpOutboundAuth: 'none' }],
-		});
-		expect(tools[0].config).toEqual({ remoteMcp: { url, outboundAuth: { none: {} } } });
-	});
 });
 
 describe('configHash with harness options', () => {
@@ -224,19 +217,11 @@ describe('configHash with harness options', () => {
 
 	it('keeps the 0.4.5 hash when the new options are unset', () => {
 		expect(configHash(base)).toBe(LEGACY);
-		expect(configHash({ ...base, allowedTools: undefined, truncation: undefined })).toBe(LEGACY);
-		expect(configHash({ ...base, allowedTools: [] })).toBe(LEGACY);
+		expect(configHash({ ...base, truncation: undefined })).toBe(LEGACY);
 		expect(configHash(typical)).toBe(LEGACY_TYPICAL);
 	});
 
-	it('changes when allowedTools or truncation is set', () => {
-		expect(configHash({ ...base, allowedTools: ['read'] })).not.toBe(LEGACY);
+	it('changes when truncation is set', () => {
 		expect(configHash({ ...base, truncation: { strategy: 'none' } })).not.toBe(LEGACY);
-	});
-
-	it('ignores selector order in allowedTools', () => {
-		expect(configHash({ ...base, allowedTools: ['read', 'shell'] })).toBe(
-			configHash({ ...base, allowedTools: ['shell', 'read'] }),
-		);
 	});
 });

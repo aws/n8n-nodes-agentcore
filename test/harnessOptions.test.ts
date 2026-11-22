@@ -2,42 +2,73 @@
  * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
  * SPDX-License-Identifier: MIT
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
+	buildAllowedTools,
 	buildTruncation,
-	parseAllowedTools,
+	parseSelectors,
 	parseTags,
+	syncTags,
 	withHarnessOptions,
 } from '../nodes/AgentCoreHarness/helpers/harnessOptions';
 
-describe('parseAllowedTools', () => {
-	it('returns undefined when blank, so the service default applies', () => {
-		expect(parseAllowedTools(undefined)).toBeUndefined();
-		expect(parseAllowedTools('')).toBeUndefined();
-		expect(parseAllowedTools(' , \n ')).toBeUndefined();
+describe('parseSelectors', () => {
+	it('splits on commas and newlines, trims, and de-duplicates', () => {
+		expect(parseSelectors(undefined)).toEqual([]);
+		expect(parseSelectors(' , \n ')).toEqual([]);
+		expect(parseSelectors('@a/x, @b\n@a/x')).toEqual(['@a/x', '@b']);
+	});
+});
+
+describe('buildAllowedTools', () => {
+	const configured = ['code_interpreter', 'lookup_order'];
+
+	it('is unrestricted (undefined) when neither option was added', () => {
+		expect(buildAllowedTools({ configuredToolNames: configured })).toBeUndefined();
+		expect(
+			buildAllowedTools({ extraSelectors: ' ', configuredToolNames: configured }),
+		).toBeUndefined();
 	});
 
-	it('splits on commas and newlines, trims, and de-duplicates', () => {
-		expect(parseAllowedTools('read, shell\n@builtin/edit,read')).toEqual([
+	it('keeps every configured tool available as @<name> when built-ins are restricted', () => {
+		// Verified live: a restricted list disables configured tools, a plain name
+		// does not re-enable them, and @<name> does.
+		expect(buildAllowedTools({ builtIns: ['read'], configuredToolNames: configured })).toEqual([
 			'read',
-			'shell',
-			'@builtin/edit',
+			'@code_interpreter',
+			'@lookup_order',
 		]);
 	});
 
-	it('passes every documented selector form through unchanged', () => {
-		const selectors = [
-			'*',
-			'shell',
-			'file_*',
-			'@builtin',
-			'@builtin/shell',
-			'@git',
-			'@git/git_status',
-			'@git/read_*',
-			'@*-mcp/status',
-		];
-		expect(parseAllowedTools(selectors.join(','))).toEqual(selectors);
+	it('allows only the configured tools when no built-ins are selected', () => {
+		expect(buildAllowedTools({ builtIns: [], configuredToolNames: configured })).toEqual([
+			'@code_interpreter',
+			'@lookup_order',
+		]);
+	});
+
+	it('returns an empty list, not undefined, for no built-ins and no configured tools', () => {
+		// Verified live: allowedTools [] is accepted and means no tools at all.
+		expect(buildAllowedTools({ builtIns: [], configuredToolNames: [] })).toEqual([]);
+	});
+
+	it('lets an extra selector narrow one configured tool without re-adding all of it', () => {
+		expect(
+			buildAllowedTools({
+				builtIns: ['read'],
+				extraSelectors: '@my-mcp/read_*',
+				configuredToolNames: ['my-mcp', 'code_interpreter'],
+			}),
+		).toEqual(['read', '@my-mcp/read_*', '@code_interpreter']);
+	});
+
+	it('treats extra selectors alone as a restriction that still keeps configured tools', () => {
+		expect(
+			buildAllowedTools({
+				extraSelectors: '@my-mcp/status',
+				configuredToolNames: ['my-mcp', 'browser'],
+			}),
+		).toEqual(['@my-mcp/status', '@browser']);
 	});
 });
 
@@ -127,37 +158,75 @@ describe('withHarnessOptions', () => {
 	const base = { systemPrompt: [{ text: 'x' }] };
 	const truncation = { strategy: 'none' };
 
-	it('create: sends each option only when configured', () => {
+	it('create: sends truncation and tags only when configured', () => {
 		expect(withHarnessOptions(base, {}, 'create')).toEqual(base);
-		expect(
-			withHarnessOptions(
-				base,
-				{ allowedTools: ['read'], truncation, tags: { team: 'a' } },
-				'create',
-			),
-		).toEqual({ ...base, allowedTools: ['read'], truncation, tags: { team: 'a' } });
-	});
-
-	it('update: restores the default tool set when Allowed Tools is cleared', () => {
-		// Omitting allowedTools on UpdateHarness would keep a stale restriction.
-		expect(withHarnessOptions(base, {}, 'update')).toEqual({ ...base, allowedTools: ['*'] });
-		expect(withHarnessOptions(base, { allowedTools: ['shell'] }, 'update')).toEqual({
+		expect(withHarnessOptions(base, { truncation, tags: { team: 'a' } }, 'create')).toEqual({
 			...base,
-			allowedTools: ['shell'],
+			truncation,
+			tags: { team: 'a' },
 		});
 	});
 
-	it('update: never sends tags (create-only) and sends truncation when set', () => {
+	it('update: sends truncation when set and never sends tags', () => {
+		expect(withHarnessOptions(base, {}, 'update')).toEqual(base);
 		expect(withHarnessOptions(base, { tags: { team: 'a' }, truncation }, 'update')).toEqual({
 			...base,
-			allowedTools: ['*'],
 			truncation,
 		});
 	});
 
+	it('never sets allowedTools on the harness (it is per invocation)', () => {
+		expect(withHarnessOptions(base, {}, 'update')).not.toHaveProperty('allowedTools');
+		expect(withHarnessOptions(base, {}, 'create')).not.toHaveProperty('allowedTools');
+	});
+
 	it('does not mutate the input payload', () => {
 		const input = { ...base };
-		withHarnessOptions(input, { allowedTools: ['read'] }, 'create');
+		withHarnessOptions(input, { truncation }, 'create');
 		expect(input).toEqual(base);
+	});
+});
+
+describe('syncTags', () => {
+	const arn = 'arn:aws:bedrock-agentcore:us-west-2:111122223333:harness/h1';
+	const client = () => ({
+		tagResource: vi.fn(() => Promise.resolve({})),
+		untagResource: vi.fn(() => Promise.resolve({})),
+	});
+
+	it('makes no calls when nothing changed', async () => {
+		const c = client();
+		expect(await syncTags(c, arn, { team: 'a' }, { team: 'a' })).toEqual({ team: 'a' });
+		expect(c.tagResource).not.toHaveBeenCalled();
+		expect(c.untagResource).not.toHaveBeenCalled();
+	});
+
+	it('tags only new or changed keys and untags removed keys', async () => {
+		const c = client();
+		const result = await syncTags(c, arn, { team: 'a', old: 'x' }, { team: 'b', env: 'prod' });
+		expect(c.tagResource).toHaveBeenCalledWith(arn, { team: 'b', env: 'prod' });
+		expect(c.untagResource).toHaveBeenCalledWith(arn, ['old']);
+		expect(result).toEqual({ team: 'b', env: 'prod' });
+	});
+
+	it('never removes tags when the previous state is unknown', async () => {
+		// Harnesses recorded before tag sync, or adopted by name, may carry tags set
+		// outside n8n; those must not be deleted.
+		const c = client();
+		await syncTags(c, arn, undefined, { team: 'a' });
+		expect(c.tagResource).toHaveBeenCalledWith(arn, { team: 'a' });
+		expect(c.untagResource).not.toHaveBeenCalled();
+
+		const c2 = client();
+		expect(await syncTags(c2, arn, undefined, undefined)).toEqual({});
+		expect(c2.tagResource).not.toHaveBeenCalled();
+		expect(c2.untagResource).not.toHaveBeenCalled();
+	});
+
+	it('removes every tag the node applied when the field is cleared', async () => {
+		const c = client();
+		await syncTags(c, arn, { team: 'a', env: 'prod' }, undefined);
+		expect(c.untagResource).toHaveBeenCalledWith(arn, ['team', 'env']);
+		expect(c.tagResource).not.toHaveBeenCalled();
 	});
 });

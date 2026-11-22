@@ -13,22 +13,66 @@ import { ApplicationError, type IDataObject } from 'n8n-workflow';
  * harness tools / models documentation.
  */
 
+/** Built-in tools documented for the harness managed tool set (selector names). */
+export const BUILT_IN_TOOLS = [
+	'shell',
+	'read',
+	'write',
+	'edit',
+	'todo_write',
+	'retrieve_context',
+	'subagent',
+	'web_fetch',
+] as const;
+
+/** Splits a comma- or newline-separated selector list, trimmed and de-duplicated. */
+export function parseSelectors(raw: string | undefined): string[] {
+	if (!raw) return [];
+	return Array.from(
+		new Set(
+			raw
+				.split(/[\n,]/)
+				.map((s) => s.trim())
+				.filter(Boolean),
+		),
+	);
+}
+
+export interface AllowedToolsInput {
+	/**
+	 * Built-in tools to allow. `undefined` means the option was not added, so the
+	 * built-in set is not restricted. An empty array means "no built-in tools".
+	 */
+	builtIns?: string[];
+	/** Extra selectors, for example `@my-mcp-server/read_*`. */
+	extraSelectors?: string;
+	/** Names of the tools configured for this invocation (node tools or harness tools). */
+	configuredToolNames: string[];
+}
+
 /**
- * Parses the Allowed Tools field into the `allowedTools` selector list.
+ * Builds the per-invocation `allowedTools` list, or `undefined` for "no
+ * restriction" (the service then allows every configured tool plus the managed
+ * built-in set).
  *
- * Selectors are passed through unchanged so every documented pattern works:
- * plain built-in names (`shell`, `read`), `@builtin`, `@builtin/<name>`,
- * `@<server>`, `@<server>/<tool>`, and globs. Returns `undefined` when the
- * field is empty, so the service default applies (the current recommended
- * built-in tool set, equivalent to `["*"]`).
+ * Any restricted list also disables every configured tool it does not match,
+ * and a plain name only matches built-in tools. A configured tool is matched by
+ * `@<tool name>` (verified against the live service: `code_interpreter` does
+ * not re-enable a configured Code Interpreter, `@code_interpreter` does). Users
+ * restrict built-ins here, not the tools they configured on purpose, so every
+ * configured tool is added as `@<name>` unless an extra selector already scopes
+ * it (`@<name>` or `@<name>/...`), which lets users narrow an MCP server or
+ * Gateway to some of its tools.
  */
-export function parseAllowedTools(raw: string | undefined): string[] | undefined {
-	if (!raw) return undefined;
-	const selectors = raw
-		.split(/[\n,]/)
-		.map((s) => s.trim())
-		.filter(Boolean);
-	if (selectors.length === 0) return undefined;
+export function buildAllowedTools(input: AllowedToolsInput): string[] | undefined {
+	const extras = parseSelectors(input.extraSelectors);
+	if (input.builtIns === undefined && extras.length === 0) return undefined;
+
+	const selectors = [...(input.builtIns ?? []), ...extras];
+	for (const name of input.configuredToolNames) {
+		const scoped = selectors.some((s) => s === `@${name}` || s.startsWith(`@${name}/`));
+		if (!scoped) selectors.push(`@${name}`);
+	}
 	return Array.from(new Set(selectors));
 }
 
@@ -120,24 +164,20 @@ function wholeNumber(value: unknown, label: string): number | undefined {
 }
 
 export interface HarnessOptions {
-	allowedTools?: string[];
 	truncation?: IDataObject;
 	tags?: Record<string, string>;
 }
 
 /**
- * Adds `allowedTools`, `truncation`, and `tags` to a CreateHarness or
- * UpdateHarness payload. Returns a new object; `payload` is not mutated.
+ * Adds `truncation` and `tags` to a CreateHarness or UpdateHarness payload.
+ * Returns a new object; `payload` is not mutated.
  *
- * Create: each field is sent only when configured, so an unset field means
- * "use the service default".
- *
- * Update: an omitted field on UpdateHarness means "keep the stored value". The
- * node owns a Run Agent harness, so clearing Allowed Tools must restore the
- * default rather than leave a stale restriction in place; it is sent as `["*"]`,
- * which the service documents as equivalent to omitting it. Truncation has no
- * equivalent "default" value, so it is only sent when configured. Tags are
- * create-only (UpdateHarness has no tags field).
+ * Truncation is sent whenever configured. UpdateHarness has no value meaning
+ * "back to the managed default", so removing it keeps the stored setting.
+ * Tags go on CreateHarness only; later changes are applied with
+ * TagResource / UntagResource (see `syncTags`), which needs no harness update.
+ * Allowed tools are not set on the harness at all: they are sent on every
+ * InvokeHarness instead, so changing them never triggers an update.
  */
 export function withHarnessOptions(
 	payload: IDataObject,
@@ -145,12 +185,39 @@ export function withHarnessOptions(
 	mode: 'create' | 'update',
 ): IDataObject {
 	const out: IDataObject = { ...payload };
-	if (options.allowedTools && options.allowedTools.length > 0) {
-		out.allowedTools = options.allowedTools;
-	} else if (mode === 'update') {
-		out.allowedTools = ['*'];
-	}
 	if (options.truncation) out.truncation = options.truncation;
 	if (mode === 'create' && options.tags) out.tags = options.tags;
 	return out;
+}
+
+export interface TagClient {
+	tagResource(resourceArn: string, tags: Record<string, string>): Promise<unknown>;
+	untagResource(resourceArn: string, tagKeys: string[]): Promise<unknown>;
+}
+
+/**
+ * Brings the harness tags in line with the Tags field and returns the tags to
+ * remember for next time.
+ *
+ * `stored` is what the node last applied. It is `undefined` for a harness the
+ * node created before tag sync existed or adopted by name, in which case tags
+ * are only added or overwritten, never removed, so tags set outside n8n are not
+ * deleted. Tags copied to the managed runtime and memory at creation are not
+ * changed; TagResource applies to the harness itself.
+ */
+export async function syncTags(
+	client: TagClient,
+	resourceArn: string,
+	stored: Record<string, string> | undefined,
+	desired: Record<string, string> | undefined,
+): Promise<Record<string, string>> {
+	const want = desired ?? {};
+	const toSet: Record<string, string> = {};
+	for (const [k, v] of Object.entries(want)) {
+		if (stored?.[k] !== v) toSet[k] = v;
+	}
+	const toRemove = stored ? Object.keys(stored).filter((k) => !(k in want)) : [];
+	if (Object.keys(toSet).length > 0) await client.tagResource(resourceArn, toSet);
+	if (toRemove.length > 0) await client.untagResource(resourceArn, toRemove);
+	return want;
 }
