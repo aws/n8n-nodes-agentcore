@@ -43,7 +43,7 @@
       },
       "name": "Governed Analyst",
       "type": "@aws/n8n-nodes-agentcore.agentCoreHarness",
-      "typeVersion": 2,
+      "typeVersion": 3,
       "position": [
         480,
         300
