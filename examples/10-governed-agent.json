@@ -1,0 +1,96 @@
+{
+  "name": "AgentCore — Governed Agent (Allowed Tools, Truncation, Tags)",
+  "nodes": [
+    {
+      "parameters": {},
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "agentName": "governed_analyst",
+        "modelId": "global.anthropic.claude-sonnet-4-6",
+        "systemPrompt": "You are a data analyst. Compute every number by running Python in the code interpreter. Never estimate. Answer in at most three sentences.",
+        "prompt": "Compute the mean and population standard deviation of these latencies in ms: 120, 340, 95, 610, 210. Then say in one sentence whether 610 looks like an outlier.",
+        "addTools": true,
+        "tools": {
+          "tool": [
+            {
+              "type": "agentcore_code_interpreter",
+              "name": "code_interpreter"
+            }
+          ]
+        },
+        "additionalOptions": {
+          "allowedBuiltInTools": [],
+          "timeoutSeconds": 300
+        },
+        "provisioningOptions": {
+          "memoryMode": "disabled",
+          "truncation": {
+            "config": {
+              "strategy": "sliding_window",
+              "messagesCount": 20
+            }
+          },
+          "tags": "{\"workflow\": \"governed-analyst\", \"cost-center\": \"analytics\"}"
+        }
+      },
+      "name": "Governed Analyst",
+      "type": "@aws/n8n-nodes-agentcore.agentCoreHarness",
+      "typeVersion": 3,
+      "position": [
+        480,
+        300
+      ],
+      "credentials": {
+        "agentCoreApi": {
+          "id": "1",
+          "name": "AgentCore creds"
+        }
+      },
+      "notes": "Allowed Built-in Tools is added with nothing selected: no shell, file, sub-agent or web-fetch tools. The configured Code Interpreter stays available. Truncation is pinned to a 20-message window, and the tags are applied to the harness for cost allocation."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Shows what the agent was allowed to use and what the run cost.\n// allowedTools is the exact list the node sent with this invocation.\nconst BUILT_IN = ['shell', 'read', 'write', 'edit', 'todo_write', 'retrieve_context', 'subagent', 'web_fetch'];\nconst used = ($json.toolUses ?? []).map((t) => t.name);\nconst builtInUsed = used.filter((name) => BUILT_IN.includes(name));\nconst u = $json.usage ?? {};\n// With prompt caching, inputTokens counts only the uncached part.\nconst totalInputTokens =\n  (u.inputTokens ?? 0) + (u.cacheReadInputTokens ?? 0) + (u.cacheWriteInputTokens ?? 0);\n\nreturn [{\n  json: {\n    answer: $json.response,\n    allowedTools: $json.allowedTools ?? 'unrestricted',\n    toolsUsed: used,\n    builtInToolsUsed: builtInUsed,\n    withinPolicy: builtInUsed.length === 0,\n    tags: $json.tags ?? {},\n    truncation: $json.harness?.truncation ?? 'service default',\n    totalInputTokens,\n    outputTokens: u.outputTokens ?? 0,\n    cachedInputTokens: (u.cacheReadInputTokens ?? 0) + (u.cacheWriteInputTokens ?? 0),\n  },\n}];"
+      },
+      "name": "Report Tools and Cost",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Governed Analyst",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Governed Analyst": {
+      "main": [
+        [
+          {
+            "node": "Report Tools and Cost",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
