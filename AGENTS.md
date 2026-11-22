@@ -48,7 +48,7 @@ authoritative for the conventions below.
 │   ├── QUICKSTART.md                 # Install to first agent reply in ~5 minutes
 │   ├── SPEC.md                       # The canonical spec - source of truth for v0.x scope
 │   └── iam-trust-policy.json         # Execution-role trust policy template (the only IAM policy shipped; permission policies live in the AWS harness security guide, linked from README)
-├── examples/                         # Importable workflows: 01-08 are single-feature, 09 verifies the memory guarantees
+├── examples/                         # Importable workflows: 01-08 are single-feature, 09 verifies the memory guarantees, 10 shows allowed tools, truncation, and tags
 │   ├── 01-mcp-research-agent.json
 │   ├── 02-code-interpreter.json
 │   ├── 03-multiturn-support.json
@@ -58,6 +58,7 @@ authoritative for the conventions below.
 │   ├── 07-inline-function-roundtrip.json
 │   ├── 08-vpc-filesystem.json
 │   ├── 09-memory-isolation-test.json
+│   ├── 10-governed-agent.json
 │   └── templates/                    # End-to-end workflows that pair the node with other n8n nodes; these are what get published to n8n's template library, so they follow n8n's sticky-note and naming guidelines
 │       ├── calculate-campaign-statistics-from-a-webhook.json
 │       ├── remember-each-customer-across-chat-sessions.json
