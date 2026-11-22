@@ -589,6 +589,105 @@ export const harnessFields: INodeProperties[] = [
 					'Whether to delete and recreate the harness instead of updating it. Use only when an update fails or the harness is stuck. Managed memory is disassociated (not deleted) on recreate. Hidden when a Harness ARN is provided.',
 			},
 			{
+				displayName: 'Lifecycle Hooks',
+				name: 'lifecycleHooks',
+				type: 'fixedCollection',
+				placeholder: 'Add Hook',
+				typeOptions: { multipleValues: true },
+				default: {},
+				description:
+					'Run your own checks or notifications at fixed points in the agent loop (up to 20). A Lambda target returns allow or deny and can block the run or skip a tool call; SNS and EventBridge targets only receive notifications. The execution role needs lambda:InvokeFunction, sns:Publish, or events:PutEvents on each target. Configuring hooks here replaces any hooks set on the harness elsewhere; removing them all here removes only hooks the node set.',
+				options: [
+					{
+						name: 'hook',
+						displayName: 'Hook',
+						values: [
+							{
+								displayName: 'Event',
+								name: 'event',
+								type: 'options',
+								default: 'before_tool_call',
+								options: [
+									{
+										name: 'Before Invocation',
+										value: 'before_invocation',
+										description:
+											'Before the agent starts. A Lambda deny stops the run (stopReason hook_stopped).',
+									},
+									{
+										name: 'Before Tool Call',
+										value: 'before_tool_call',
+										description:
+											'After the model proposes a tool call. A Lambda deny skips the call and the agent continues.',
+									},
+									{
+										name: 'After Tool Call',
+										value: 'after_tool_call',
+										description:
+											'After a tool result exists. A Lambda deny keeps the result and stops the run.',
+									},
+									{
+										name: 'After Invocation',
+										value: 'after_invocation',
+										description:
+											'After the run completes. A Lambda deny is reported but cannot retract output.',
+									},
+								],
+							},
+							{
+								displayName: 'Failure Mode',
+								name: 'failureMode',
+								type: 'options',
+								default: 'deny',
+								displayOptions: { show: { targetType: ['lambda'] } },
+								options: [
+									{ name: 'Deny (Default)', value: 'deny' },
+									{ name: 'Allow', value: 'allow' },
+								],
+								description:
+									'Decision applied when the Lambda function times out, errors, or returns an invalid response',
+							},
+							{
+								displayName: 'Lambda Timeout (Seconds)',
+								name: 'lambdaTimeoutSeconds',
+								type: 'number',
+								default: 60,
+								typeOptions: { minValue: 1, maxValue: 900 },
+								displayOptions: { show: { targetType: ['lambda'] } },
+								description: 'How long the harness waits for the decision, 1 to 900 seconds',
+							},
+							{
+								displayName: 'Name',
+								name: 'name',
+								type: 'string',
+								default: '',
+								placeholder: 'refund_policy',
+								description: 'Unique name for the hook; it appears in the output hookEvents',
+							},
+							{
+								displayName: 'Target ARN',
+								name: 'targetArn',
+								type: 'string',
+								default: '',
+								placeholder: 'arn:aws:lambda:us-west-2:123456789012:function:my-policy',
+								description: 'ARN of the Lambda function, SNS topic, or EventBridge event bus',
+							},
+							{
+								displayName: 'Target Type',
+								name: 'targetType',
+								type: 'options',
+								default: 'lambda',
+								options: [
+									{ name: 'Lambda (Allow or Deny)', value: 'lambda' },
+									{ name: 'SNS Topic (Notify)', value: 'sns' },
+									{ name: 'EventBridge Bus (Notify)', value: 'eventBridge' },
+								],
+							},
+						],
+					},
+				],
+			},
+			{
 				displayName: 'List Versions',
 				name: 'listVersions',
 				type: 'boolean',

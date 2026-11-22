@@ -166,6 +166,14 @@ function wholeNumber(value: unknown, label: string): number | undefined {
 export interface HarnessOptions {
 	truncation?: IDataObject;
 	tags?: Record<string, string>;
+	/** Lifecycle hooks to set; an empty list means none configured in n8n. */
+	hooks?: IDataObject[];
+	/**
+	 * True when the node applied hooks to this harness earlier. Only then does an
+	 * empty Hooks field send `hooks: []` (remove all) on update; otherwise hooks
+	 * configured outside n8n are kept.
+	 */
+	managesHooks?: boolean;
 }
 
 /**
@@ -187,6 +195,13 @@ export function withHarnessOptions(
 	const out: IDataObject = { ...payload };
 	if (options.truncation) out.truncation = options.truncation;
 	if (mode === 'create' && options.tags) out.tags = options.tags;
+	// UpdateHarness: a supplied list replaces the stored hooks, [] removes them,
+	// and omission keeps them. Never remove hooks the node did not set.
+	if (options.hooks && options.hooks.length > 0) {
+		out.hooks = options.hooks;
+	} else if (mode === 'update' && options.managesHooks) {
+		out.hooks = [];
+	}
 	return out;
 }
 
@@ -220,4 +235,100 @@ export async function syncTags(
 	if (Object.keys(toSet).length > 0) await client.tagResource(resourceArn, toSet);
 	if (toRemove.length > 0) await client.untagResource(resourceArn, toRemove);
 	return want;
+}
+
+export type HookEventType =
+	| 'before_invocation'
+	| 'before_tool_call'
+	| 'after_tool_call'
+	| 'after_invocation';
+
+/** API union member for each lifecycle event (HarnessHook). */
+const HOOK_MEMBER: Record<HookEventType, string> = {
+	before_invocation: 'beforeInvocation',
+	before_tool_call: 'beforeToolCall',
+	after_tool_call: 'afterToolCall',
+	after_invocation: 'afterInvocation',
+};
+
+/** Documented limit: a harness supports up to 20 hooks. */
+export const MAX_HOOKS = 20;
+
+const TARGET_ARN: Record<string, { pattern: RegExp; example: string }> = {
+	lambda: {
+		pattern: /^arn:aws[a-z-]*:lambda:[a-z0-9-]+:\d{12}:function:[^/\s]+$/,
+		example: 'arn:aws:lambda:<region>:<account-id>:function:<name>',
+	},
+	sns: {
+		pattern: /^arn:aws[a-z-]*:sns:[a-z0-9-]+:\d{12}:[^/\s]+$/,
+		example: 'arn:aws:sns:<region>:<account-id>:<topic>',
+	},
+	eventBridge: {
+		pattern: /^arn:aws[a-z-]*:events:[a-z0-9-]+:\d{12}:event-bus\/[^\s]+$/,
+		example: 'arn:aws:events:<region>:<account-id>:event-bus/<name>',
+	},
+};
+
+/**
+ * Builds the harness `hooks` list (HarnessHook[]) from the Lifecycle Hooks
+ * field. Each hook is `{ <eventMember>: { name, target: { lambda | sns |
+ * eventBridge } } }`. Lambda targets are the only blocking ones and accept
+ * `timeoutSeconds` (1 to 900, service default 60) and `failureMode`
+ * (`deny` default, or `allow`).
+ *
+ * Validates the documented limits up front (at most 20 hooks, unique names,
+ * timeout range) and that each ARN matches its target type, so a typo fails in
+ * n8n instead of after a multi-minute harness update.
+ */
+export function buildHooks(hooksUi: IDataObject | undefined): IDataObject[] {
+	const entries = ((hooksUi?.hook as IDataObject[] | undefined) ?? []).filter(Boolean);
+	if (entries.length > MAX_HOOKS) {
+		throw new ApplicationError(
+			`A harness supports at most ${MAX_HOOKS} lifecycle hooks; ${entries.length} are configured.`,
+		);
+	}
+	const names = new Set<string>();
+	return entries.map((entry, i) => {
+		const label = `Lifecycle hook ${i + 1}`;
+		const event = (entry.event as HookEventType) || 'before_tool_call';
+		const member = HOOK_MEMBER[event];
+		if (!member) throw new ApplicationError(`${label}: unknown event "${event}".`);
+
+		const name = ((entry.name as string) || '').trim();
+		if (!name) throw new ApplicationError(`${label}: Name is required.`);
+		if (names.has(name)) {
+			throw new ApplicationError(`Lifecycle hook names must be unique; "${name}" is used twice.`);
+		}
+		names.add(name);
+
+		const targetType = (entry.targetType as string) || 'lambda';
+		const spec = TARGET_ARN[targetType];
+		if (!spec) throw new ApplicationError(`${label}: unknown target type "${targetType}".`);
+		const arn = ((entry.targetArn as string) || '').trim();
+		if (!spec.pattern.test(arn)) {
+			throw new ApplicationError(
+				`${label} ("${name}"): Target ARN "${arn}" is not a valid ${targetType} ARN. Expected ${spec.example}.`,
+			);
+		}
+
+		const target: IDataObject = { arn };
+		if (targetType === 'lambda') {
+			const timeout = entry.lambdaTimeoutSeconds;
+			if (timeout !== undefined && timeout !== null && timeout !== '') {
+				const n = Number(timeout);
+				if (!Number.isInteger(n) || n < 1 || n > 900) {
+					throw new ApplicationError(
+						`${label} ("${name}"): Lambda Timeout must be a whole number from 1 to 900 seconds, got ${timeout}.`,
+					);
+				}
+				target.timeoutSeconds = n;
+			}
+			const failureMode = (entry.failureMode as string) || 'deny';
+			if (failureMode !== 'deny' && failureMode !== 'allow') {
+				throw new ApplicationError(`${label} ("${name}"): Failure Mode must be deny or allow.`);
+			}
+			target.failureMode = failureMode;
+		}
+		return { [member]: { name, target: { [targetType]: target } } };
+	});
 }

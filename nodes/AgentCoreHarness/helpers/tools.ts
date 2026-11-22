@@ -263,6 +263,7 @@ export function configHash(input: {
 	maxTokens?: number;
 	timeoutSeconds?: number;
 	truncation?: IDataObject;
+	hooks?: IDataObject[];
 }): string {
 	const fields: Record<string, unknown> = {
 		model: input.model ?? null,
@@ -279,6 +280,7 @@ export function configHash(input: {
 	// Fields added after 0.4.x are hashed only when set, so a workflow that does
 	// not use them keeps its existing hash and does not trigger an UpdateHarness.
 	if (input.truncation) fields.truncation = input.truncation;
+	if (input.hooks && input.hooks.length > 0) fields.hooks = input.hooks;
 	const normalized = JSON.stringify(fields);
 	return createHash('sha256').update(normalized).digest('hex');
 }

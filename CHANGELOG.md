@@ -101,6 +101,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `usage.cacheWriteInputTokens`, summed across model calls, when the model reports
   them.
 
+- **Lifecycle hooks** (Provisioning Options). Up to 20 hooks at four points in the
+  agent loop (before invocation, before a tool call, after a tool call, after
+  invocation), each targeting a Lambda function (returns allow or deny), an SNS topic,
+  or an EventBridge bus (notifications). Lambda timeout (1 to 900 seconds) and failure
+  mode are configurable. Names, ARNs, and limits are validated before any AWS call.
+  On update the configured list replaces the harness hooks; clearing the field removes
+  only hooks the node set, so hooks configured outside n8n are kept. Verified against
+  the live service for all four events and all three target types, including each
+  documented Lambda deny behaviour.
 - **Lifecycle hook events in the output**: `hookEvents` lists each hook that fired
   (`name`, `type`, and for Lambda hooks `decision` and `reason`), and
   `stopReason: "hook_stopped"` is passed through when a hook stops the run. Useful
