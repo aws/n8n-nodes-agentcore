@@ -193,7 +193,8 @@ When versioning/endpoint actions are enabled, the output also carries
 `versions` and/or `endpoint` (+ `endpoints`).
 
 `usage` is summed across every model call in the run. When the model reports
-prompt caching (Bedrock `converse_stream` harnesses cache automatically), it also
+prompt caching (automatic for supported models using `converse_stream` on Amazon
+Bedrock, initially Anthropic models), it also
 carries `cacheReadInputTokens` and `cacheWriteInputTokens`. `inputTokens` then
 counts only the uncached part (in our testing 4 tokens next to about 5,000 cached),
 so include the cache fields when you track cost; cached tokens are billed at
@@ -319,6 +320,20 @@ hook, in which case the run ends with a different stop reason (such as
   UntagResource, without a harness update (the copies on the runtime and memory
   are not changed). Tags set outside n8n are never removed. Needs
   `bedrock-agentcore:TagResource` and `UntagResource`.
+- **Lifecycle Hooks** (Provisioning Options). Run your own checks or notifications
+  at four points in the agent loop, up to 20 hooks. A **Lambda** target returns
+  allow or deny: a deny before the invocation stops the run
+  (`stopReason: "hook_stopped"`), a deny before a tool call skips that call and the
+  agent continues, and a deny after a tool call keeps the result and stops the run.
+  **SNS** and **EventBridge** targets receive notifications only (EventBridge
+  events use source `bedrock-agentcore.harness`, detail type
+  `Harness Lifecycle Hook`), which is a simple way to start an n8n workflow from an
+  agent run. The execution role needs `lambda:InvokeFunction`, `sns:Publish`, or
+  `events:PutEvents` on each target. Hooks also apply to tool calls made by
+  subagents. Configuring hooks replaces any hooks set on the harness elsewhere;
+  clearing them removes only hooks the node set. Each hook that fires appears in
+  the output `hookEvents`, with the decision and reason for Lambda hooks. See
+  [Lifecycle hooks](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/harness-lifecycle-hooks.html).
 - **Remote MCP IAM auth.** Set **MCP Outbound Auth** to AWS IAM / SigV4 and give
   the signing service (for example `lambda` for a Lambda function URL). The
   harness signs each MCP request with its execution role, so no secret is
@@ -406,6 +421,15 @@ a specific endpoint instead of the latest version.
 > Disabled for the old no-memory behavior). Force Recreate now disassociates
 > managed memory instead of deleting it, and the run-mode default model is
 > Claude Sonnet 4.6.
+
+> **Upgrading to 0.5.0?** Existing workflows keep working unchanged: their nodes
+> stay on node version 2, and none of the new options is on until you add it.
+> New placements use node version 3, where a blank **Model ID** or **System
+> Prompt** uses AgentCore's managed defaults (the current recommended model and a
+> task-oriented system prompt that AWS improves over time) instead of Claude
+> Sonnet 4.6 and a one-line prompt. Set either field to pin it. One behaviour
+> change: for the OpenAI provider, **API Base URL** is now honoured, so a value
+> left in that field redirects calls and the API key to that URL.
 
 ## Examples
 

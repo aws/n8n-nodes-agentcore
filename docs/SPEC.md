@@ -115,7 +115,7 @@ A single operation. The **Harness ARN** field is the mode discriminator: blank â
 |Harness ARN         |string    |no            |always    |Blank = Run Agent (auto-provision). Populated = invoke this harness directly.                                  |
 |Agent Name          |string    |yes (run mode)|ARN blank |Logical name. Letters, numbers, underscores, max 40 chars. Cache key â€” one name = one harness.                 |
 |Model Provider      |options   |no            |always    |Bedrock / OpenAI / Gemini / LiteLLM. Selects the model union member. Switchable per invocation.                |
-|Model ID            |string    |no            |always    |Provider-specific model ID. Run mode: defaults to Claude Sonnet 4.6 on Bedrock if blank. Invoke mode: override.|
+|Model ID            |string    |no            |always    |Provider-specific model ID. Run mode, node version 3: blank uses the AgentCore recommended model (managed default). Node version 2: blank defaults to Claude Sonnet 4.6. Invoke mode: override.|
 |Model Options       |collection|no            |always    |API Key ARN, API Base URL, API Format, temperature, topP/K, model max tokens, additionalParams (JSON).         |
 |System Prompt       |string    |no            |always    |Agent instructions. Run mode: defaults if blank. Invoke mode: override if set.                                 |
 |Prompt              |string    |no            |always    |User message (n8n expressions supported). Optional only when sending Tool Results back.                        |
