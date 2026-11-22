@@ -456,18 +456,20 @@ async function runAgent(
 	const sessionId = resolveSessionId(sessionInput);
 	const messages = buildMessages(ctx, itemIndex, prompt);
 
+	// Sent per invocation (never on the harness), so changing it is instant.
+	const allowedTools = buildAllowedTools({
+		builtIns: cfg.builtInTools,
+		extraSelectors: cfg.toolSelectors,
+		configuredToolNames: cfg.tools.map((t) => t.name),
+	});
+
 	const invokePayload = buildInvokePayload({
 		harnessArn: record.arn,
 		runtimeSessionId: sessionId,
 		messages,
 		modelConfig: cfg.modelConfig,
 		skills: cfg.skills,
-		// Sent per invocation (never on the harness), so changing it is instant.
-		allowedTools: buildAllowedTools({
-			builtIns: cfg.builtInTools,
-			extraSelectors: cfg.toolSelectors,
-			configuredToolNames: cfg.tools.map((t) => t.name),
-		}),
+		allowedTools,
 		actorId: cfg.actorId,
 		qualifier: cfg.qualifier,
 		maxIterations: cfg.maxIterations,
@@ -483,26 +485,30 @@ async function runAgent(
 		payload: invokePayload,
 	});
 
-	return {
-		operation: 'run',
-		agentName,
-		harnessId: record.harnessId,
-		harnessArn: record.arn,
-		sessionId,
-		// "generated" means the node created a fresh session this run (Session ID
-		// left blank) — i.e. this is a NEW conversation and prior turns are not
-		// recalled. "provided" means the user supplied a stable Session ID, so the
-		// conversation continues. See the Session ID field help.
-		sessionSource: sessionInput ? 'provided' : 'generated',
-		...(cfg.actorId ? { actorId: cfg.actorId } : {}),
-		...(harnessSummary ? { harness: harnessSummary } : {}),
-		response: result.text,
-		stopReason: result.stopReason,
-		toolUses: result.toolUses,
-		usage: result.usage,
-		latencyMs: result.latencyMs,
-		...versionEndpointOutput,
-	};
+	return describeAllowedTools(
+		{
+			operation: 'run',
+			agentName,
+			harnessId: record.harnessId,
+			harnessArn: record.arn,
+			sessionId,
+			// "generated" means the node created a fresh session this run (Session ID
+			// left blank) — i.e. this is a NEW conversation and prior turns are not
+			// recalled. "provided" means the user supplied a stable Session ID, so the
+			// conversation continues. See the Session ID field help.
+			sessionSource: sessionInput ? 'provided' : 'generated',
+			...(cfg.actorId ? { actorId: cfg.actorId } : {}),
+			...(harnessSummary ? { harness: harnessSummary } : {}),
+			response: result.text,
+			stopReason: result.stopReason,
+			toolUses: result.toolUses,
+			usage: result.usage,
+			latencyMs: result.latencyMs,
+			...(record.tags && Object.keys(record.tags).length > 0 ? { tags: record.tags } : {}),
+			...versionEndpointOutput,
+		},
+		allowedTools,
+	);
 }
 
 /**
@@ -556,19 +562,22 @@ async function invokeExisting(
 	// Uses control-plane GetHarness, which is SigV4 even on the OAuth invoke path.
 	const harnessSummary = await getHarnessSummary(controlClient, harnessIdFromArn(harnessArn));
 
-	return {
-		operation: 'invokeExisting',
-		harnessArn,
-		sessionId,
-		sessionSource: sessionInput ? 'provided' : 'generated',
-		...(cfg.actorId ? { actorId: cfg.actorId } : {}),
-		...(harnessSummary ? { harness: harnessSummary } : {}),
-		response: result.text,
-		stopReason: result.stopReason,
-		toolUses: result.toolUses,
-		usage: result.usage,
-		latencyMs: result.latencyMs,
-	};
+	return describeAllowedTools(
+		{
+			operation: 'invokeExisting',
+			harnessArn,
+			sessionId,
+			sessionSource: sessionInput ? 'provided' : 'generated',
+			...(cfg.actorId ? { actorId: cfg.actorId } : {}),
+			...(harnessSummary ? { harness: harnessSummary } : {}),
+			response: result.text,
+			stopReason: result.stopReason,
+			toolUses: result.toolUses,
+			usage: result.usage,
+			latencyMs: result.latencyMs,
+		},
+		allowedTools,
+	);
 }
 
 /* ----- invoke dispatch (SigV4 vs OAuth Bearer) ----- */
@@ -945,6 +954,7 @@ function summarizeHarness(h: any): IDataObject {
 	}
 	summary.builtInToolsAvailable = true;
 	if (Array.isArray(h.skills)) summary.skillCount = h.skills.length;
+	if (h.truncation?.strategy) summary.truncation = h.truncation;
 
 	return summary;
 }
@@ -1096,8 +1106,7 @@ async function resolveInvokeExistingAllowedTools(
 	}
 	let configuredToolNames = cfg.tools.map((t) => t.name);
 	if (configuredToolNames.length === 0) {
-		const harnessId = harnessArn.split('/').pop() as string;
-		const response = await controlClient.getHarness(harnessId);
+		const response = await controlClient.getHarness(harnessIdFromArn(harnessArn));
 		const harnessTools = (response?.harness?.tools ?? []) as Array<{ name?: string }>;
 		configuredToolNames = harnessTools.map((t) => t.name).filter((n): n is string => !!n);
 	}
@@ -1106,6 +1115,28 @@ async function resolveInvokeExistingAllowedTools(
 		extraSelectors: cfg.toolSelectors,
 		configuredToolNames,
 	});
+}
+
+/**
+ * Records the effective per-invocation tool restriction in the output, so a
+ * workflow (or someone testing in the editor) can see what the agent was
+ * allowed to use. `builtInToolsAvailable` is corrected when the list leaves out
+ * every built-in tool; it otherwise describes the harness default.
+ */
+function describeAllowedTools(
+	output: IDataObject,
+	allowedTools: string[] | undefined,
+): IDataObject {
+	if (allowedTools === undefined) return output;
+	const allowsBuiltIns = allowedTools.some(
+		(s) => s === '*' || !s.startsWith('@') || s.startsWith('@builtin'),
+	);
+	const harness = output.harness as IDataObject | undefined;
+	return {
+		...output,
+		allowedTools,
+		...(harness ? { harness: { ...harness, builtInToolsAvailable: allowsBuiltIns } } : {}),
+	};
 }
 
 interface InvokePayloadInput {

@@ -60,6 +60,8 @@ export class ControlClient {
 			method: 'POST',
 			path: `/tags/${encodeURIComponent(resourceArn)}`,
 			body: { tags },
+			// TagResourceRequest has no clientToken member; tagging is idempotent.
+			omitClientToken: true,
 		});
 	}
 

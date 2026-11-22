@@ -82,6 +82,11 @@ export interface ControlRequest {
 	query?: Record<string, string | number | string[] | undefined>;
 	/** Optional request body object (serialized to JSON). */
 	body?: unknown;
+	/**
+	 * Skip the automatic `clientToken`. Only for operations whose API model has
+	 * no clientToken member and that are idempotent anyway (TagResource).
+	 */
+	omitClientToken?: boolean;
 }
 
 /**
@@ -103,7 +108,7 @@ export async function controlRequest<T = any>(
 	// regenerated per attempt.
 	const mutating = req.method !== 'GET';
 	const body =
-		mutating && req.body !== undefined
+		mutating && req.body !== undefined && !req.omitClientToken
 			? { clientToken: newClientToken(), ...(req.body as Record<string, unknown>) }
 			: req.body;
 	const bodyString = body === undefined ? '' : JSON.stringify(body);

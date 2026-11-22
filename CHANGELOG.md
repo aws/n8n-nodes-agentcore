@@ -66,10 +66,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `usage.cacheWriteInputTokens`, summed across model calls, when the model reports
   them.
 
+- **Output shows what was applied** (#112): `allowedTools` (the effective list sent
+  with the invocation), `tags` (Run Agent), and `harness.truncation`.
+  `harness.builtInToolsAvailable` is `false` when the list leaves out every
+  built-in tool.
+
 Existing workflows are unaffected: the new fields are hashed only when set, so a
 workflow that does not use them keeps its configuration hash and issues no
 `UpdateHarness`. Covered by `test/harnessOptions.test.ts`, `test/tools.test.ts`,
-and `test/stream.test.ts`.
+`test/stream.test.ts`, and the new node-level `test/node.test.ts`, which drives
+`execute()` against an in-memory AgentCore and checks which request each option
+lands on.
 
 - **The node now identifies itself on every AgentCore request.** Requests carry
   `User-Agent: n8n-nodes-agentcore` and the same value in `x-amz-user-agent`, so
